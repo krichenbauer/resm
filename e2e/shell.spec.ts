@@ -68,7 +68,10 @@ test('ships the license notices of bundled dependencies', async ({ request }) =>
   expect(response.ok()).toBe(true);
 
   const notices = await response.text();
-  expect(notices).toContain('lit');
-  expect(notices).toContain('BSD-3-Clause');
+  expect(notices).toMatch(/^## lit - .* \(BSD-3-Clause\)$/m);
   expect(notices).toContain('Copyright (c) 2017 Google LLC');
+  // The layout library is only part of the worker bundle. Its distribution
+  // already contains its graph library, which has the same notice.
+  expect(notices).toMatch(/^## @dagrejs\/dagre - .* \(MIT\)$/m);
+  expect(notices).toContain('Copyright (c) 2012-2014 Chris Pettitt');
 });
