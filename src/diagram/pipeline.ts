@@ -43,7 +43,7 @@ const NAMES: Record<Representation, string> = {
  * so that no input can keep the computation busy for long.
  */
 export function workStateLimit(stateLimit: number): number {
-  return Math.max(2000, stateLimit * 10);
+  return Math.max(2000, stateLimit * 4);
 }
 
 function buildAutomaton(ast: RegexNode, request: DiagramRequest): Automaton {

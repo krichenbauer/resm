@@ -110,7 +110,7 @@ describe('diagram pipeline', () => {
 
   it('allows intermediate automata well beyond the display limit', () => {
     expect(workStateLimit(200)).toBe(2000);
-    expect(workStateLimit(1000)).toBe(10_000);
+    expect(workStateLimit(1000)).toBe(4000);
     expect(workStateLimit(5)).toBe(2000);
   });
 });
