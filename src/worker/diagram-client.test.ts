@@ -64,6 +64,17 @@ describe('diagram client', () => {
     expect(stateCounts()).toEqual([3]);
   });
 
+  it('reports which request a result belongs to', () => {
+    const worker = new FakeWorker();
+    const regexes: string[] = [];
+    const client = new DiagramClient(worker, (_result, answered) => regexes.push(answered.regex));
+    client.request(request('a'));
+    client.request(request('ab'));
+    worker.answerNext();
+    worker.answerNext();
+    expect(regexes).toEqual(['ab']);
+  });
+
   it('delivers errors like any other result', () => {
     const { worker, client, stateCounts } = setup();
     client.request(request('a('));

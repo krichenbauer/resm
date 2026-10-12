@@ -27,18 +27,18 @@ export interface DiagramWorker {
  */
 export class DiagramClient {
   private nextId = 0;
-  private inFlight: number | null = null;
+  private inFlight: { readonly id: number; readonly request: DiagramRequest } | null = null;
   private waiting: DiagramRequest | null = null;
   private disposed = false;
 
   constructor(
     private readonly worker: DiagramWorker,
-    private readonly onResult: (result: ComputeResult) => void,
+    private readonly onResult: (result: ComputeResult, request: DiagramRequest) => void,
   ) {
     worker.addEventListener('message', ({ data }) => this.settle(data.id, data.result));
     worker.addEventListener('error', () => {
       if (this.inFlight === null) return;
-      this.settle(this.inFlight, {
+      this.settle(this.inFlight.id, {
         ok: false,
         error: { kind: 'internal', message: 'The diagram could not be computed because of an internal error.' },
       });
@@ -59,16 +59,17 @@ export class DiagramClient {
   }
 
   private send(request: DiagramRequest): void {
-    this.inFlight = this.nextId++;
-    this.worker.postMessage({ id: this.inFlight, request });
+    this.inFlight = { id: this.nextId++, request };
+    this.worker.postMessage(this.inFlight);
   }
 
   private settle(id: number, result: ComputeResult): void {
-    if (this.disposed || id !== this.inFlight) return;
+    if (this.disposed || id !== this.inFlight?.id) return;
+    const { request } = this.inFlight;
     this.inFlight = null;
     const next = this.waiting;
     this.waiting = null;
     if (next) this.send(next);
-    else this.onResult(result);
+    else this.onResult(result, request);
   }
 }

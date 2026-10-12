@@ -1,10 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-
-const regexField = (page: Page) => page.getByRole('textbox', { name: 'Regular expression' });
-const representation = (page: Page) => page.getByRole('combobox', { name: 'Automaton representation' });
-const states = (page: Page) => page.locator('[data-state]');
-const edges = (page: Page) => page.locator('[data-edge]');
-const error = (page: Page) => page.getByRole('status');
+import { diagramArea, edges, error, regexField, representation, settled, states } from './support.ts';
 
 /** Edge labels by the names of their states, such as `q0-q1: a`. */
 async function edgeLabels(page: Page): Promise<string[]> {
@@ -123,10 +118,10 @@ test('reports a diagram beyond 200 states and keeps the last valid diagram', asy
 
 test('shows the whole diagram inside the diagram area', async ({ page }) => {
   await regexField(page).fill('[a-z]+@[a-z]+\\.(com|org)');
-  await expect(states(page).first()).toBeVisible();
-  await expect(edges(page).first()).toBeVisible();
+  await expect(states(page)).toHaveCount(11);
+  await settled(page);
 
-  const area = await page.getByRole('img', { name: 'Automaton diagram' }).boundingBox();
+  const area = await diagramArea(page).boundingBox();
   if (!area) throw new Error('diagram area is not rendered');
   for (const part of [...(await states(page).all()), ...(await edges(page).locator('text').all())]) {
     const box = await part.boundingBox();

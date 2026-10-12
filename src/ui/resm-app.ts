@@ -1,8 +1,6 @@
 import { LitElement, css, html } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import type { Diagram } from '../diagram/diagram.ts';
-import { DEFAULT_STATE_LIMIT, type DiagramError } from '../diagram/pipeline.ts';
-import type { DiagramLayout } from '../layout/layout.ts';
+import { DEFAULT_STATE_LIMIT, type DiagramError, type DiagramRequest } from '../diagram/pipeline.ts';
 import {
   DEFAULT_REPRESENTATION,
   REPRESENTATIONS,
@@ -11,6 +9,7 @@ import {
 } from '../settings/representation.ts';
 import type { ComputeResult } from '../worker/compute.ts';
 import { DiagramClient } from '../worker/diagram-client.ts';
+import type { DiagramUpdate } from './resm-diagram.ts';
 import './resm-diagram.ts';
 
 /** Application shell: controls at the top, the diagram in the remaining space. */
@@ -94,17 +93,19 @@ export class ResmApp extends LitElement {
   `;
 
   /** The last diagram that could be computed. It stays visible while the input is invalid. */
-  @state() private shown?: { diagram: Diagram; layout: DiagramLayout };
+  @state() private shown?: DiagramUpdate;
   @state() private error?: DiagramError;
 
   private regex = '';
   private representation: Representation = DEFAULT_REPRESENTATION;
+  /** The representation of the diagram on screen, which may lag behind the selected one. */
+  private shownRepresentation?: Representation;
   private client?: DiagramClient;
 
   override connectedCallback(): void {
     super.connectedCallback();
     const worker = new Worker(new URL('../worker/diagram.worker.ts', import.meta.url), { type: 'module' });
-    this.client = new DiagramClient(worker, (result) => this.show(result));
+    this.client = new DiagramClient(worker, (result, request) => this.show(result, request));
     this.requestDiagram();
   }
 
@@ -122,13 +123,16 @@ export class ResmApp extends LitElement {
     });
   }
 
-  private show(result: ComputeResult): void {
-    if (result.ok) {
-      this.shown = { diagram: result.diagram, layout: result.layout };
-      this.error = undefined;
-    } else {
+  private show(result: ComputeResult, request: DiagramRequest): void {
+    if (!result.ok) {
       this.error = result.error;
+      return;
     }
+    // An edited regex moves the diagram into its new shape; another representation replaces it.
+    const animate = request.representation === this.shownRepresentation;
+    this.shown = { diagram: result.diagram, layout: result.layout, animate };
+    this.shownRepresentation = request.representation;
+    this.error = undefined;
   }
 
   private onRegexInput(event: InputEvent): void {
@@ -175,7 +179,7 @@ export class ResmApp extends LitElement {
         </div>
         <p class="error" id="error" role="status">${this.errorText()}</p>
       </header>
-      <resm-diagram .diagram=${this.shown?.diagram} .layout=${this.shown?.layout}></resm-diagram>
+      <resm-diagram .shown=${this.shown}></resm-diagram>
     `;
   }
 }

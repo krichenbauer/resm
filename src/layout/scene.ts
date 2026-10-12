@@ -17,6 +17,8 @@ const LABEL_HEIGHT = 18;
 
 export interface SceneState {
   readonly name: string;
+  /** Identifies the state across edits; see `DiagramState.key`. */
+  readonly key: string;
   readonly x: number;
   readonly y: number;
   readonly initial: boolean;
@@ -26,6 +28,8 @@ export interface SceneState {
 export interface SceneEdge {
   /** The names of both states, such as `q0-q1`. */
   readonly id: string;
+  /** Identifies the edge across edits by the keys of both states. */
+  readonly key: string;
   /** SVG path data that ends at the outline of the target state. */
   readonly path: string;
   /** The label text with the middle of its box and its estimated width. */
@@ -45,6 +49,11 @@ export interface Scene {
   readonly edges: readonly SceneEdge[];
   /** The smallest box around all states, edges, labels, and the initial arrow. */
   readonly bounds: Bounds;
+}
+
+/** Identifies the edge between two states across edits by the keys of both states. */
+export function edgeKey(diagram: Diagram, from: number, to: number): string {
+  return `${diagram.states[from]?.key}\u001e${diagram.states[to]?.key}`;
 }
 
 /**
@@ -88,7 +97,7 @@ export function buildScene(
     }
     include(geometry.label.x, geometry.label.y, width / 2, LABEL_HEIGHT / 2);
     const id = `${diagram.states[from]?.name}-${diagram.states[to]?.name}`;
-    return { id, path: geometry.path, label: { text, ...geometry.label, width } };
+    return { id, key: edgeKey(diagram, from, to), path: geometry.path, label: { text, ...geometry.label, width } };
   });
 
   return { states, edges, bounds };
