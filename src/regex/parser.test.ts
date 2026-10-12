@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_GROUP_DEPTH, MAX_REPETITION_COUNT } from './parser.ts';
-import { parseInvalid, parseValid, tree } from './test-support.ts';
+import { CharSet } from './charset.ts';
+import { MAX_GROUP_DEPTH, MAX_REPETITION_COUNT, parseRegex } from './parser.ts';
+import { formatSet, parseInvalid, parseValid, tree } from './test-support.ts';
 
 describe('literals, concatenation, alternation, and grouping', () => {
   it('parses the empty regex as the empty string', () => {
@@ -249,5 +250,279 @@ describe('quantifiers', () => {
       message: 'The upper bound 2 of this repetition is smaller than its lower bound 3.',
       range: { start: 1, end: 6 },
     });
+  });
+});
+
+describe('dot, predefined classes, and escapes', () => {
+  it('parses the dot as any character except the line feed', () => {
+    expect(tree('.')).toBe('[\\x00-\\x09\\x0b-\\x7f]');
+    expect(tree('a.*')).toBe("(cat 'a' (rep [\\x00-\\x09\\x0b-\\x7f] 0 inf))");
+  });
+
+  it('parses the predefined classes', () => {
+    expect(tree('\\d')).toBe('[0-9]');
+    expect(tree('\\w')).toBe('[0-9A-Z_a-z]');
+    expect(tree('\\s')).toBe('[\\x09-\\x0d\\x20]');
+  });
+
+  it('parses the negated classes as complements within ASCII', () => {
+    expect(tree('\\D')).toBe('[\\x00-/:-\\x7f]');
+    expect(tree('\\W')).toBe('[\\x00-/:-@[-^`{-\\x7f]');
+    expect(tree('\\S')).toBe('[\\x00-\\x08\\x0e-\\x1f!-\\x7f]');
+  });
+
+  it('parses an escaped punctuation character as a literal', () => {
+    for (const char of ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~') {
+      expect(tree(`\\${char}`)).toBe(formatSet(CharSet.of(char)));
+    }
+    expect(tree('\\*')).toBe("'*'");
+    expect(tree('\\\\')).toBe("'\\'");
+    expect(tree('a\\.b')).toBe("(cat 'a' '.' 'b')");
+    expect(tree('\\(a\\)')).toBe("(cat '(' 'a' ')')");
+    expect(tree('\\^a\\$')).toBe("(cat '^' 'a' '$')");
+    expect(tree('a\\{2\\}')).toBe("(cat 'a' '{' '2' '}')");
+  });
+
+  it('lets escapes be quantified', () => {
+    expect(tree('\\d+')).toBe('(rep [0-9] 1 inf)');
+    expect(tree('\\++')).toBe("(rep '+' 1 inf)");
+  });
+
+  it('rejects a backslash at the end', () => {
+    expect(parseInvalid('a\\')).toEqual({
+      message: "Incomplete escape: the '\\' at the end has no character to escape. Write '\\\\' for a literal backslash.",
+      range: { start: 1, end: 2 },
+    });
+  });
+
+  it('rejects control and hex escapes', () => {
+    const message = (escape: string) =>
+      `The escape '${escape}' is not supported: control, octal, hex, and Unicode escapes are not available.`;
+    expect(parseInvalid('a\\n')).toEqual({ message: message('\\n'), range: { start: 1, end: 3 } });
+    for (const letter of 'ntrfvaecxuUoN0') {
+      expect(parseInvalid(`\\${letter}`)).toEqual({ message: message(`\\${letter}`), range: { start: 0, end: 2 } });
+    }
+    expect(parseInvalid('\\x41')).toMatchObject({ range: { start: 0, end: 2 } });
+  });
+
+  it('rejects backreferences', () => {
+    const message = (escape: string) =>
+      `The escape '${escape}' is not supported: backreferences cannot be expressed by a finite automaton.`;
+    expect(parseInvalid('(a)\\1')).toEqual({ message: message('\\1'), range: { start: 3, end: 5 } });
+    expect(parseInvalid('\\9')).toEqual({ message: message('\\9'), range: { start: 0, end: 2 } });
+    expect(parseInvalid('\\k<n>')).toEqual({ message: message('\\k'), range: { start: 0, end: 2 } });
+  });
+
+  it('rejects word boundaries and extra anchors', () => {
+    const message = (escape: string) =>
+      `The escape '${escape}' is not supported: word boundaries and anchors other than '^' and '$' are not available.`;
+    for (const letter of 'bBAZzG') {
+      expect(parseInvalid(`\\${letter}`)).toEqual({ message: message(`\\${letter}`), range: { start: 0, end: 2 } });
+    }
+  });
+
+  it('rejects Unicode property classes', () => {
+    const message = (escape: string) =>
+      `The escape '${escape}' is not supported: RESM handles ASCII characters only and has no Unicode properties.`;
+    expect(parseInvalid('\\p{L}')).toEqual({ message: message('\\p'), range: { start: 0, end: 2 } });
+    expect(parseInvalid('\\P{L}')).toEqual({ message: message('\\P'), range: { start: 0, end: 2 } });
+  });
+
+  it('rejects every other escaped letter instead of guessing', () => {
+    const supported = 'dwsDWS';
+    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const letter of letters) {
+      expect(parseRegex(`\\${letter}`).ok).toBe(supported.includes(letter));
+    }
+    expect(parseInvalid('\\h')).toEqual({
+      message: "The escape '\\h' is not supported. Only \\d, \\w, \\s, \\D, \\W, \\S, and escaped punctuation are available.",
+      range: { start: 0, end: 2 },
+    });
+  });
+
+  it('rejects an escaped non-ASCII character', () => {
+    expect(parseInvalid('\\é')).toMatchObject({ range: { start: 1, end: 2 } });
+  });
+});
+
+describe('character sets', () => {
+  it('parses listed characters and ranges', () => {
+    expect(tree('[abc]')).toBe('[a-c]');
+    expect(tree('[a-z]')).toBe('[a-z]');
+    expect(tree('[a-zA-Z0-9_]')).toBe(tree('\\w'));
+    expect(tree('[a-a]')).toBe("'a'");
+    expect(tree('[x]')).toBe("'x'");
+    expect(tree('[aab]')).toBe('[a-b]');
+    expect(tree('[ -~]')).toBe('[\\x20-~]');
+  });
+
+  it('negates within ASCII, including the line feed', () => {
+    expect(tree('[^a]')).toBe('[\\x00-`b-\\x7f]');
+    expect(tree('[^a-z]')).toBe('[\\x00-`{-\\x7f]');
+    expect(parseValid('[^a]')).toMatchObject({ type: 'chars', range: { start: 0, end: 4 } });
+  });
+
+  it('treats regex metacharacters inside a set as literals', () => {
+    expect(tree('[.]')).toBe("'.'");
+    expect(tree('[*+?]')).toBe('[*-+?]');
+    expect(tree('[(){}|$]')).toBe('[$(-){-}]');
+    expect(tree('[a^]')).toBe('[^a]');
+    expect(tree('[^^]')).toBe('[\\x00-]_-\\x7f]');
+  });
+
+  it('treats a hyphen at the start or end of a set as a literal', () => {
+    expect(tree('[-a]')).toBe('[-a]');
+    expect(tree('[a-]')).toBe('[-a]');
+    expect(tree('[^-a]')).toBe(tree('[^a-]'));
+    expect(tree('[-]')).toBe("'-'");
+    expect(tree('[a\\-z]')).toBe('[-az]');
+    expect(tree('[a-c-e]')).toBe('[-a-ce]');
+    expect(tree('[+--]')).toBe('[+--]');
+  });
+
+  it('treats a closing bracket directly after the opening as a literal', () => {
+    expect(tree('[]a]')).toBe('[]a]');
+    expect(tree('[^]a]')).toBe('[\\x00-\\^-`b-\\x7f]');
+    expect(tree('[]]')).toBe("']'");
+    expect(tree('[a\\]]')).toBe('[]a]');
+  });
+
+  it('supports classes and escapes inside a set', () => {
+    expect(tree('[\\d_]')).toBe('[0-9_]');
+    expect(tree('[\\w.-]')).toBe('[--.0-9A-Z_a-z]');
+    expect(tree('[^\\d]')).toBe(tree('\\D'));
+    expect(tree('[\\D]')).toBe(tree('\\D'));
+    expect(tree('[\\s\\S]')).toBe('[\\x00-\\x7f]');
+    expect(tree('[\\\\\\[]')).toBe('[[-\\]');
+    expect(tree('[\\^a]')).toBe('[^a]');
+    expect(tree('[\\d-]')).toBe('[-0-9]');
+  });
+
+  it('allows a set that matches no character at all', () => {
+    expect(tree('[^\\s\\S]')).toBe('[]');
+    expect(tree('a[^\\d\\D]')).toBe("(cat 'a' [])");
+  });
+
+  it('lets sets be quantified and combined', () => {
+    expect(tree('[ab]+c')).toBe("(cat (rep [a-b] 1 inf) 'c')");
+    expect(tree('[a-c][x-z]{2}')).toBe('(cat [a-c] (rep [x-z] 2 2))');
+  });
+
+  it('rejects an unterminated set', () => {
+    const message = "Unterminated character set: this '[' has no matching ']'.";
+    expect(parseInvalid('[')).toEqual({ message, range: { start: 0, end: 1 } });
+    expect(parseInvalid('a[bc')).toEqual({ message, range: { start: 1, end: 2 } });
+    expect(parseInvalid('[a-')).toEqual({ message, range: { start: 0, end: 1 } });
+    expect(parseInvalid('[a\\]')).toEqual({ message, range: { start: 0, end: 1 } });
+
+    const withHint = `${message} A ']' directly after the opening is a literal character.`;
+    expect(parseInvalid('[]')).toEqual({ message: withHint, range: { start: 0, end: 1 } });
+    expect(parseInvalid('[^]')).toEqual({ message: withHint, range: { start: 0, end: 1 } });
+  });
+
+  it('rejects ranges that are out of order', () => {
+    expect(parseInvalid('[z-a]')).toEqual({
+      message: "The range 'z-a' is out of order: 'z' comes after 'a' in ASCII.",
+      range: { start: 1, end: 4 },
+    });
+    expect(parseInvalid('[a-Z]')).toMatchObject({ range: { start: 1, end: 4 } });
+    expect(parseInvalid('[a\\--\\+]')).toMatchObject({ range: { start: 2, end: 7 } });
+  });
+
+  it('rejects a class as the endpoint of a range', () => {
+    const message = "A class such as '\\d' cannot be an endpoint of a range. Write '\\-' for a literal hyphen.";
+    expect(parseInvalid('[a-\\d]')).toEqual({ message, range: { start: 1, end: 5 } });
+    expect(parseInvalid('[\\d-a]')).toEqual({ message, range: { start: 1, end: 5 } });
+    expect(parseInvalid('[\\w-\\d]')).toEqual({ message, range: { start: 1, end: 6 } });
+  });
+
+  it('rejects nested sets and POSIX classes', () => {
+    const message =
+      "A '[' inside a character set is not supported: nested sets and POSIX classes are not available. Write '\\[' for a literal bracket.";
+    expect(parseInvalid('[a[b]]')).toEqual({ message, range: { start: 2, end: 3 } });
+    expect(parseInvalid('[[:alpha:]]')).toEqual({ message, range: { start: 1, end: 2 } });
+    expect(parseInvalid('[a-[]')).toEqual({ message, range: { start: 3, end: 4 } });
+  });
+
+  it('rejects set intersection', () => {
+    expect(parseInvalid('[a-z&&[^b]]')).toEqual({
+      message: "Set intersection with '&&' is not supported. Write '\\&' for a literal ampersand.",
+      range: { start: 4, end: 6 },
+    });
+    expect(tree('[a&b]')).toBe('[&a-b]');
+    expect(tree('[\\&\\&]')).toBe("'&'");
+  });
+
+  it('rejects non-ASCII characters and unsupported escapes inside a set', () => {
+    expect(parseInvalid('[aé]')).toMatchObject({ range: { start: 2, end: 3 } });
+    expect(parseInvalid('[a-é]')).toMatchObject({ range: { start: 3, end: 4 } });
+    expect(parseInvalid('[\\n]')).toMatchObject({ range: { start: 1, end: 3 } });
+    expect(parseInvalid('[\\b]')).toEqual({
+      message: "The escape '\\b' is not supported: control, octal, hex, and Unicode escapes are not available.",
+      range: { start: 1, end: 3 },
+    });
+  });
+});
+
+describe('unsupported group syntax', () => {
+  it('rejects non-capturing groups', () => {
+    expect(parseInvalid('a(?:b)')).toEqual({
+      message: "Non-capturing groups '(?:...)' are not supported. Use a plain group '(...)' instead.",
+      range: { start: 1, end: 4 },
+    });
+  });
+
+  it('rejects lookaround assertions', () => {
+    const message = 'Lookahead and lookbehind assertions are not supported.';
+    expect(parseInvalid('(?=a)')).toEqual({ message, range: { start: 0, end: 3 } });
+    expect(parseInvalid('(?!a)')).toEqual({ message, range: { start: 0, end: 3 } });
+    expect(parseInvalid('(?<=a)')).toEqual({ message, range: { start: 0, end: 4 } });
+    expect(parseInvalid('(?<!a)')).toEqual({ message, range: { start: 0, end: 4 } });
+  });
+
+  it('rejects named groups', () => {
+    const message = "Named groups are not supported. Use a plain group '(...)' instead.";
+    expect(parseInvalid('(?<name>a)')).toEqual({ message, range: { start: 0, end: 3 } });
+    expect(parseInvalid('(?P<name>a)')).toEqual({ message, range: { start: 0, end: 4 } });
+  });
+
+  it('rejects inline flags', () => {
+    const message = "Flags such as '(?i)' are not supported.";
+    expect(parseInvalid('(?i)a')).toEqual({ message, range: { start: 0, end: 3 } });
+    expect(parseInvalid('(?s:a)')).toEqual({ message, range: { start: 0, end: 3 } });
+    expect(parseInvalid('(?-i)a')).toEqual({ message, range: { start: 0, end: 3 } });
+  });
+
+  it('rejects every other group extension', () => {
+    const message = "Group extensions starting with '(?' are not supported. Write '\\(\\?' for the literal characters.";
+    expect(parseInvalid('(?>a)')).toEqual({ message, range: { start: 0, end: 2 } });
+    expect(parseInvalid('(?#note)')).toEqual({ message, range: { start: 0, end: 2 } });
+    expect(parseInvalid('(?P=name)')).toEqual({ message, range: { start: 0, end: 2 } });
+    expect(parseInvalid('(?')).toEqual({ message, range: { start: 0, end: 2 } });
+  });
+});
+
+describe('robustness', () => {
+  it('answers every input with a tree or a diagnostic inside the source', () => {
+    const alphabet = ['a', 'b', '0', '-', '^', '$', '.', '|', '?', '*', '+', '(', ')', '[', ']', '{', '}', ',', '\\', 'd', '&', ':', '<', '=', 'é', '😀'];
+    // Small linear congruential generator, so failures are reproducible.
+    let seed = 1;
+    const next = (bound: number) => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return Math.floor((seed / 4294967296) * bound);
+    };
+
+    for (let round = 0; round < 20_000; round++) {
+      const source = Array.from({ length: next(12) }, () => alphabet[next(alphabet.length)]).join('');
+      const result = parseRegex(source);
+      if (result.ok) continue;
+      const { message, range } = result.error;
+      expect(message, source).not.toBe('');
+      expect(range.start, source).toBeGreaterThanOrEqual(0);
+      expect(range.end, source).toBeGreaterThanOrEqual(range.start);
+      expect(range.end, source).toBeLessThanOrEqual(source.length);
+      // Only a problem at the very end of the source may have an empty location.
+      if (range.start === range.end) expect(range.start, source).toBe(source.length);
+    }
   });
 });

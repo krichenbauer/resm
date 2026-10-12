@@ -1,5 +1,6 @@
 import type { RegexNode, SourceRange } from './ast.ts';
 import { ASCII_SIZE, CharSet } from './charset.ts';
+import { ANY_CHAR, DIGIT, SPACE, WORD } from './classes.ts';
 
 /** Deepest supported nesting of groups; bounds the recursion of the parser and its consumers. */
 export const MAX_GROUP_DEPTH = 100;
@@ -12,6 +13,21 @@ interface Bounds {
   readonly min: number;
   readonly max: number | null;
 }
+
+/** One member of a character set; `char` is `null` for a class such as `\d`. */
+interface SetItem {
+  readonly set: CharSet;
+  readonly char: string | null;
+}
+
+const CLASS_ESCAPES: ReadonlyMap<string, CharSet> = new Map([
+  ['d', DIGIT],
+  ['w', WORD],
+  ['s', SPACE],
+  ['D', DIGIT.complement()],
+  ['W', WORD.complement()],
+  ['S', SPACE.complement()],
+]);
 
 /** A problem in the regex source, with the location it refers to. */
 export interface RegexDiagnostic {
@@ -179,7 +195,7 @@ class Parser {
   }
 
   private skipDigits(): void {
-    for (let char = this.peek(); char !== undefined && char >= '0' && char <= '9'; char = this.peek()) {
+    for (let char = this.peek(); char !== undefined && isAsciiDigit(char); char = this.peek()) {
       this.pos++;
     }
   }
@@ -190,6 +206,15 @@ class Parser {
     switch (char) {
       case '(':
         return this.parseGroup();
+      case '[':
+        return this.parseSet();
+      case '.':
+        this.pos++;
+        return { type: 'chars', set: ANY_CHAR, range: { start, end: this.pos } };
+      case '\\': {
+        const { set } = this.parseEscape(false);
+        return { type: 'chars', set, range: { start, end: this.pos } };
+      }
       case '*':
       case '+':
       case '?':
@@ -216,6 +241,7 @@ class Parser {
     if (this.depth === MAX_GROUP_DEPTH) {
       this.fail(`Groups are nested too deeply; the maximum depth is ${MAX_GROUP_DEPTH}.`);
     }
+    if (this.source[open + 1] === '?') this.failUnsupportedGroup(open);
     this.pos++;
     this.depth++;
     const body = this.parseAlternation();
@@ -225,6 +251,123 @@ class Parser {
     this.pos++;
     this.depth--;
     return body;
+  }
+
+  /** Reports a group that starts with `(?`, naming the construct where it is a well-known one. */
+  private failUnsupportedGroup(open: number): never {
+    const introducer = this.source.slice(open + 2, open + 4);
+    const first = introducer[0] ?? '';
+    const prefix = (length: number) => ({ start: open, end: open + length });
+    if (first === ':') {
+      this.fail("Non-capturing groups '(?:...)' are not supported. Use a plain group '(...)' instead.", prefix(3));
+    }
+    if (first === '=' || first === '!') {
+      this.fail('Lookahead and lookbehind assertions are not supported.', prefix(3));
+    }
+    if (introducer === '<=' || introducer === '<!') {
+      this.fail('Lookahead and lookbehind assertions are not supported.', prefix(4));
+    }
+    if (first === '<' || introducer === 'P<') {
+      this.fail("Named groups are not supported. Use a plain group '(...)' instead.", prefix(first === '<' ? 3 : 4));
+    }
+    if (first === '-' || (first !== 'P' && isAsciiLetter(first))) {
+      this.fail("Flags such as '(?i)' are not supported.", prefix(3));
+    }
+    this.fail(
+      "Group extensions starting with '(?' are not supported. Write '\\(\\?' for the literal characters.",
+      prefix(2),
+    );
+  }
+
+  private parseSet(): RegexNode {
+    const open = this.pos;
+    this.pos++;
+    const negated = this.peek() === '^';
+    if (negated) this.pos++;
+    const firstItem = this.pos;
+    let set = CharSet.EMPTY;
+    for (;;) {
+      const char = this.peek();
+      if (char === undefined) {
+        const hint =
+          this.source[firstItem] === ']' ? " A ']' directly after the opening is a literal character." : '';
+        this.fail(`Unterminated character set: this '[' has no matching ']'.${hint}`, {
+          start: open,
+          end: open + 1,
+        });
+      }
+      // A `]` directly after the opening is a literal, as in Python, Java, and PCRE.
+      if (char === ']' && this.pos > firstItem) break;
+      if (char === '&' && this.source[this.pos + 1] === '&') {
+        this.fail("Set intersection with '&&' is not supported. Write '\\&' for a literal ampersand.", {
+          start: this.pos,
+          end: this.pos + 2,
+        });
+      }
+
+      const itemStart = this.pos;
+      const first = this.parseSetItem();
+      const afterHyphen = this.source[this.pos + 1];
+      if (this.peek() !== '-' || afterHyphen === undefined || afterHyphen === ']') {
+        set = set.union(first.set);
+        continue;
+      }
+      this.pos++;
+      const last = this.parseSetItem();
+      const range = { start: itemStart, end: this.pos };
+      if (first.char === null || last.char === null) {
+        this.fail(
+          "A class such as '\\d' cannot be an endpoint of a range. Write '\\-' for a literal hyphen.",
+          range,
+        );
+      }
+      if (first.char > last.char) {
+        this.fail(
+          `The range '${this.text(range)}' is out of order: '${first.char}' comes after '${last.char}' in ASCII.`,
+          range,
+        );
+      }
+      set = set.union(CharSet.range(first.char, last.char));
+    }
+    this.pos++;
+    return { type: 'chars', set: negated ? set.complement() : set, range: { start: open, end: this.pos } };
+  }
+
+  private parseSetItem(): SetItem {
+    if (this.peek() === '\\') return this.parseEscape(true);
+    if (this.peek() === '[') {
+      this.fail(
+        "A '[' inside a character set is not supported: nested sets and POSIX classes are not available. Write '\\[' for a literal bracket.",
+      );
+    }
+    const char = this.takeAscii();
+    return { set: CharSet.of(char), char };
+  }
+
+  /** Parses a backslash escape: a predefined class or an escaped punctuation character. */
+  private parseEscape(inSet: boolean): SetItem {
+    const start = this.pos;
+    this.pos++;
+    const char = this.peek();
+    if (char === undefined) {
+      this.fail(
+        "Incomplete escape: the '\\' at the end has no character to escape. Write '\\\\' for a literal backslash.",
+        { start, end: start + 1 },
+      );
+    }
+    const classSet = CLASS_ESCAPES.get(char);
+    if (classSet) {
+      this.pos++;
+      return { set: classSet, char: null };
+    }
+    if (isAsciiLetter(char) || isAsciiDigit(char)) {
+      this.fail(`The escape '\\${char}' is not supported${unsupportedEscapeReason(char, inSet)}`, {
+        start,
+        end: start + 2,
+      });
+    }
+    const literal = this.takeAscii();
+    return { set: CharSet.of(literal), char: literal };
   }
 
   /** Whether the next character is the `$` that closes the whole expression. */
@@ -265,4 +408,30 @@ class Parser {
 
 function nothingToRepeat(quantifier: string): string {
   return `Nothing to repeat: '${quantifier}' must follow a character, a set, or a group.`;
+}
+
+function isAsciiDigit(char: string): boolean {
+  return char >= '0' && char <= '9';
+}
+
+function isAsciiLetter(char: string): boolean {
+  return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z');
+}
+
+/** Explains why an escaped letter or digit is rejected; continues the sentence "... is not supported". */
+function unsupportedEscapeReason(char: string, inSet: boolean): string {
+  if ((char >= '1' && char <= '9') || char === 'k') {
+    return ': backreferences cannot be expressed by a finite automaton.';
+  }
+  // Inside a set, `\b` conventionally means backspace rather than a word boundary.
+  if ('ntrfvaecxuUoN0'.includes(char) || (inSet && char === 'b')) {
+    return ': control, octal, hex, and Unicode escapes are not available.';
+  }
+  if ('bBAZzG'.includes(char)) {
+    return ": word boundaries and anchors other than '^' and '$' are not available.";
+  }
+  if (char === 'p' || char === 'P') {
+    return ': RESM handles ASCII characters only and has no Unicode properties.';
+  }
+  return '. Only \\d, \\w, \\s, \\D, \\W, \\S, and escaped punctuation are available.';
 }
