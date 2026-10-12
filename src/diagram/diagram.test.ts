@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Automaton } from '../automata/automaton.ts';
+import { ORACLE_CORPUS } from '../automata/corpus.ts';
 import { determinize } from '../automata/determinize.ts';
 import { removeEpsilons } from '../automata/epsilon-removal.ts';
 import { complete, minimize } from '../automata/minimize.ts';
@@ -79,6 +80,54 @@ describe('diagram', () => {
     const diagram = toDiagram(epsilonNfa('[^\\s\\S]'));
     expect(states(diagram)).toEqual(['>q0', 'q1*']);
     expect(edges(diagram)).toEqual([]);
+  });
+
+  describe('state keys', () => {
+    const keys = (automaton: Automaton) => toDiagram(automaton).states.map((state) => state.key);
+
+    it('identify a state by the path that first leads to it, so that it survives an edit', () => {
+      const before = keys(dfa('ab'));
+      const after = keys(dfa('abc'));
+      expect(after.slice(0, 3)).toEqual(before);
+      expect(before).not.toContain(after[3]);
+    });
+
+    it('differ for a state that is reached by a different path', () => {
+      const before = keys(dfa('ab'));
+      const after = keys(dfa('axb'));
+      expect(after.slice(0, 2)).toEqual(before.slice(0, 2));
+      expect(after).not.toContain(before[2]);
+    });
+
+    it('tell apart states that the same input leads to', () => {
+      const nfaKeys = keys(removeEpsilons(epsilonNfa('a|ab')));
+      expect(new Set(nfaKeys).size).toBe(nfaKeys.length);
+      const branches = keys(epsilonNfa('a|b'));
+      expect(new Set(branches).size).toBe(6);
+    });
+
+    it('give the sink the same key in every diagram', () => {
+      const short = toDiagram(complete(dfa('ab')));
+      const long = toDiagram(complete(dfa('abc')));
+      expect(short.states.at(-1)?.key).toBe(long.states.at(-1)?.key);
+      expect(keys(dfa('abc'))).not.toContain(long.states.at(-1)?.key);
+    });
+
+    it('are unique within every diagram', () => {
+      for (const { regex } of ORACLE_CORPUS) {
+        const automata = [
+          epsilonNfa(regex),
+          removeEpsilons(epsilonNfa(regex)),
+          dfa(regex),
+          complete(dfa(regex)),
+          minimize(dfa(regex), { keepSink: true }),
+        ];
+        for (const automaton of automata) {
+          const all = keys(automaton);
+          expect(new Set(all).size, regex).toBe(all.length);
+        }
+      }
+    });
   });
 
   it('names the sink last, so showing it does not rename the other states', () => {

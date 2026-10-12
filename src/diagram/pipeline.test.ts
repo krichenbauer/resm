@@ -37,7 +37,7 @@ describe('diagram pipeline', () => {
     const result = buildDiagram(request(''));
     expect(result).toEqual({
       ok: true,
-      diagram: { states: [{ name: 'q0', initial: true, accepting: true }], edges: [] },
+      diagram: { states: [{ name: 'q0', key: '', initial: true, accepting: true }], edges: [] },
     });
   });
 
