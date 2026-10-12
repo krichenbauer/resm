@@ -26,6 +26,8 @@ export interface DiagramEdge {
 export interface Diagram {
   readonly states: readonly DiagramState[];
   readonly edges: readonly DiagramEdge[];
+  /** The index of the sink state, if the diagram shows one. Most other states lead to it. */
+  readonly sink?: number;
 }
 
 /** Position of a transition among the transitions of its state: by first character, ε last. */
@@ -132,5 +134,6 @@ export function toDiagram(automaton: Automaton): Diagram {
     accepting: automaton.accepting.has(state),
   }));
 
-  return { states, edges };
+  const hasSink = automaton.sink !== undefined && automaton.sink !== automaton.start;
+  return { states, edges, ...(hasSink ? { sink: states.length - 1 } : {}) };
 }

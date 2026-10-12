@@ -85,28 +85,90 @@ function findBackEdges(diagram: Diagram): Set<number> {
   return backEdges;
 }
 
+/** How far below the other states the sink state is placed, between the outlines. */
+const SINK_DROP = 110;
+
+/**
+ * The layer of every state: the length of the longest path of `edges` that
+ * leads to it. The edges must not form a cycle.
+ */
+function longestPathRanks(count: number, edges: readonly (readonly [number, number])[]): number[] {
+  const targets: number[][] = Array.from({ length: count }, () => []);
+  const pending = new Array<number>(count).fill(0);
+  for (const [from, to] of edges) {
+    targets[from]?.push(to);
+    pending[to] = (pending[to] ?? 0) + 1;
+  }
+  const ranks = new Array<number>(count).fill(0);
+  const ready = pending.flatMap((incoming, state) => (incoming === 0 ? [state] : []));
+  for (const state of ready) {
+    for (const target of targets[state] ?? []) {
+      ranks[target] = Math.max(ranks[target] ?? 0, (ranks[state] ?? 0) + 1);
+      pending[target] = (pending[target] ?? 0) - 1;
+      if (pending[target] === 0) ready.push(target);
+    }
+  }
+  return ranks;
+}
+
 /**
  * Positions from a layered left-to-right layout, which keeps connections
- * short and crossings few. Only the edges that lead forward take part: back
- * edges and loops are drawn around the states afterwards, and reserving
- * lanes for them would push the states of a simple chain out of line.
+ * short and crossings few. Not everything takes part in it:
+ *
+ * - Back edges and loops are drawn around the states afterwards. Reserving
+ *   lanes for them would push the states of a simple chain out of line.
+ * - The sink state is placed below all others, because most of them lead to it.
+ * - The layout reserves a lane across every layer that an edge skips. That
+ *   suits a few long edges, but its cost explodes when there are many, so
+ *   only the shortest edges get lanes, up to a budget.
  */
 function placeStates(diagram: Diagram): Point[] {
+  const count = diagram.states.length;
+  const backEdges = findBackEdges(diagram);
+  const forward = diagram.edges.flatMap(({ from, to, label }, index) =>
+    from === to || backEdges.has(index) || from === diagram.sink || to === diagram.sink
+      ? []
+      : [{ from, to, label }],
+  );
+  const ranks = longestPathRanks(
+    count,
+    forward.map(({ from, to }) => [from, to]),
+  );
+  const span = ({ from, to }: { from: number; to: number }) => (ranks[to] ?? 0) - (ranks[from] ?? 0);
+
   const graph = new Graph();
   graph.setGraph({ rankdir: 'LR', nodesep: 56, ranksep: 64 });
   diagram.states.forEach((_, index) => {
-    graph.setNode(String(index), { width: STATE_RADIUS * 2, height: STATE_RADIUS * 2 });
+    if (index !== diagram.sink) graph.setNode(String(index), { width: STATE_RADIUS * 2, height: STATE_RADIUS * 2 });
   });
-  const backEdges = findBackEdges(diagram);
-  diagram.edges.forEach(({ from, to, label }, index) => {
-    if (from === to || backEdges.has(index)) return;
-    graph.setEdge(String(from), String(to), { width: estimateLabelWidth(label), height: 18, labelpos: 'c' });
-  });
+  // Every state has an edge from the layer directly before it, so the edges
+  // that skip no layer are enough to keep all layers in order.
+  let laneBudget = 2 * count + 50;
+  for (const edge of [...forward].sort((a, b) => span(a) - span(b))) {
+    laneBudget -= span(edge) - 1;
+    if (laneBudget < 0) break;
+    graph.setEdge(String(edge.from), String(edge.to), {
+      width: estimateLabelWidth(edge.label),
+      height: 18,
+      labelpos: 'c',
+    });
+  }
   layout(graph);
-  return diagram.states.map((_, index) => {
+
+  const positions = diagram.states.map((_, index): Point => {
+    if (index === diagram.sink) return { x: 0, y: 0 };
     const { x, y } = graph.node(String(index));
     return { x, y };
   });
+  if (diagram.sink !== undefined) {
+    const others = positions.filter((_, index) => index !== diagram.sink);
+    const xs = others.map((position) => position.x);
+    positions[diagram.sink] = {
+      x: (Math.min(...xs) + Math.max(...xs)) / 2,
+      y: Math.max(...others.map((position) => position.y)) + STATE_RADIUS * 2 + SINK_DROP,
+    };
+  }
+  return positions;
 }
 
 /** The space that the loop of a state takes up: the loop itself and its label. */
@@ -122,6 +184,62 @@ function loopObstacles(center: Point, angle: number): Obstacle[] {
   ];
 }
 
+/** The distance between a point and the line segment from `a` to `b`. */
+function distanceToSegment(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const along = lengthSquared === 0 ? 0 : ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared;
+  const share = Math.min(1, Math.max(0, along));
+  return Math.hypot(point.x - a.x - share * dx, point.y - a.y - share * dy);
+}
+
+/** Number of straight pieces that stand in for the curve of an edge when its surroundings are checked. */
+const CURVE_PIECES = 20;
+
+/** The largest radius of any obstacle. */
+const MAX_OBSTACLE_RADIUS = STATE_RADIUS;
+
+/**
+ * How much more room than required there is between an edge with the given
+ * bend and the obstacles; negative if something is too close. The search stops
+ * early once the result is negative and below `giveUpBelow`.
+ */
+function roomAround(
+  from: Point,
+  to: Point,
+  bend: number,
+  labelWidth: number,
+  others: readonly Obstacle[],
+  giveUpBelow: number,
+): number {
+  const curve = arcPoints(from, to, bend, CURVE_PIECES + 1);
+  const { label } = arcGeometry(from, to, bend, labelWidth);
+  const labelPoints = [-labelWidth / 2, 0, labelWidth / 2].map((offset) => ({ x: label.x + offset, y: label.y }));
+
+  // Only obstacles near the box around the curve and its label can matter.
+  const reach = MAX_OBSTACLE_RADIUS + LABEL_CLEARANCE;
+  const all = [...curve, ...labelPoints];
+  const minX = Math.min(...all.map((point) => point.x)) - reach;
+  const maxX = Math.max(...all.map((point) => point.x)) + reach;
+  const minY = Math.min(...all.map((point) => point.y)) - reach;
+  const maxY = Math.max(...all.map((point) => point.y)) + reach;
+
+  let room = Infinity;
+  for (const other of others) {
+    if (other.x < minX || other.x > maxX || other.y < minY || other.y > maxY) continue;
+    for (let piece = 0; piece < CURVE_PIECES; piece++) {
+      const [start, end] = [curve[piece], curve[piece + 1]];
+      if (start && end) room = Math.min(room, distanceToSegment(other, start, end) - other.radius - CLEARANCE);
+    }
+    for (const point of labelPoints) {
+      room = Math.min(room, distance(point, other) - other.radius - LABEL_CLEARANCE);
+    }
+    if (room < 0 && room < giveUpBelow) return room;
+  }
+  return room;
+}
+
 /** The gentlest bend that keeps the edge and its label clear of all `others`, or else the clearest one. */
 function chooseBend(
   from: Point,
@@ -130,26 +248,14 @@ function chooseBend(
   others: readonly Obstacle[],
   candidates: readonly number[],
 ): number {
-  const samples = Math.max(8, Math.ceil(distance(from, to) / 8));
   let best = candidates[0] ?? 0;
-  let bestMargin = -Infinity;
+  let bestRoom = -Infinity;
   for (const bend of candidates) {
-    // How much more room than required there is; negative if something is too close.
-    let margin = Infinity;
-    const { label } = arcGeometry(from, to, bend, labelWidth);
-    const labelPoints = [-labelWidth / 2, 0, labelWidth / 2].map((offset) => ({ x: label.x + offset, y: label.y }));
-    for (const other of others) {
-      for (const point of arcPoints(from, to, bend, samples)) {
-        margin = Math.min(margin, distance(point, other) - other.radius - CLEARANCE);
-      }
-      for (const point of labelPoints) {
-        margin = Math.min(margin, distance(point, other) - other.radius - LABEL_CLEARANCE);
-      }
-    }
-    if (margin >= 0) return bend;
-    if (margin > bestMargin) {
+    const room = roomAround(from, to, bend, labelWidth, others, bestRoom);
+    if (room >= 0) return bend;
+    if (room > bestRoom) {
       best = bend;
-      bestMargin = margin;
+      bestRoom = room;
     }
   }
   return best;

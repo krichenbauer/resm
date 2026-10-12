@@ -162,3 +162,57 @@ describe('layout', () => {
     });
   });
 });
+
+describe('layout of large diagrams', () => {
+  const timed = (regex: string, representation: Representation, showSink: boolean, stateLimit = DEFAULT_STATE_LIMIT) => {
+    const result = buildDiagram({ regex, representation, showSink, stateLimit });
+    if (!result.ok) throw new Error(result.error.message);
+    const started = performance.now();
+    const layout = layoutDiagram(result.diagram);
+    return { diagram: result.diagram, layout, milliseconds: performance.now() - started };
+  };
+
+  // Each case stresses something else: long chains, one state that all others
+  // lead to, edges between almost all pairs of states, and many long back edges.
+  it.each([
+    ['a{199}', 'dfa', false],
+    ['a{198}', 'dfa', true],
+    ['(a?){60}', 'nfa', false],
+    ['(a|b)*a(a|b){6}', 'min-dfa', false],
+    ['(a|b)*a(a|b){6}', 'min-dfa', true],
+    ['((a|b)(c|d)){16}', 'enfa', false],
+  ] as const)('is quick for %s as %s (sink: %s)', (regex, representation, showSink) => {
+    const { diagram, layout, milliseconds } = timed(regex, representation, showSink);
+    expect(layout.positions).toHaveLength(diagram.states.length);
+    expect(milliseconds).toBeLessThan(1500);
+  });
+
+  it('keeps all states apart', () => {
+    for (const [regex, representation, showSink] of [
+      ['a{198}', 'dfa', true],
+      ['(a?){60}', 'nfa', false],
+      ['(a|b)*a(a|b){6}', 'min-dfa', true],
+    ] as const) {
+      const { positions } = timed(regex, representation, showSink).layout;
+      for (let a = 0; a < positions.length; a++) {
+        for (let b = a + 1; b < positions.length; b++) {
+          const [first, second] = [positions[a], positions[b]];
+          if (!first || !second) throw new Error('missing position');
+          expect(distance(first, second), `${regex}: q${a} and q${b}`).toBeGreaterThanOrEqual(STATE_RADIUS * 2 + 10);
+        }
+      }
+    }
+  });
+
+  it('puts the sink state below the other states, where every state can reach it', () => {
+    const { diagram, layout } = timed('a{20}', 'dfa', true);
+    const sink = layout.positions.at(-1);
+    const others = layout.positions.slice(0, -1);
+    if (!sink) throw new Error('missing sink');
+    expect(diagram.sink).toBe(diagram.states.length - 1);
+    expect(sink.y).toBeGreaterThan(Math.max(...others.map((position) => position.y)) + STATE_RADIUS * 2);
+    const xs = others.map((position) => position.x);
+    expect(sink.x).toBeGreaterThan(Math.min(...xs));
+    expect(sink.x).toBeLessThan(Math.max(...xs));
+  });
+});
