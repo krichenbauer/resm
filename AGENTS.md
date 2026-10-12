@@ -28,6 +28,9 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - **ASCII only**: character semantics are restricted to U+0000–U+007F, including predefined classes and negation. Reject unsupported non-ASCII regex input with a clear English diagnostic. Document exact character-class and dot semantics, and test boundary cases.
 - Interpret the regex as a **full match** of the input string, not a substring search.
 - Allow `^` only at the beginning and `$` only at the end, as redundant full-match anchors. Elsewhere they are syntax errors unless escaped as literals.
+- Accept the negated predefined classes `\D`, `\W`, and `\S` as the ASCII complements of `\d`, `\w`, and `\s`, both standalone and inside character sets.
+- Accept the lazy quantifiers `*?`, `+?`, and `??`, and treat them as their greedy forms: laziness does not change the recognized language.
+- Reject non-capturing groups (`(?:...)`) and control or hex escapes (`\n`, `\t`, `\xHH`, etc.) with an "unsupported" diagnostic.
 - **No flags** (`i`, `s`, etc.). Do not support non-regular extensions such as backreferences or lookarounds. Diagnose unsupported constructs rather than silently misinterpreting them.
 - An empty regex is **valid**: its diagram is one state, `q0`, which is both initial and accepting. This is also the initial diagram on first launch; do not prefill a sample expression.
 - Do not introduce `ε` or `∅` as special input syntax. `ε` is allowed as a *diagram label* for epsilon transitions.
@@ -38,7 +41,9 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - Offer four selectable representations: **ε-NFA, epsilon-free NFA, DFA, and minimized DFA**. **DFA is the default.**
 - Ensure the automata recognize the exact language of the input expression. Keep transformations separately testable (e.g., epsilon removal, determinization, minimization).
 - By default, **omit the DFA sink/trap state** and its transitions; missing transitions mean rejection. Provide an option to show the sink and complete the DFA.
-- Use state names **`q0`, `q1`, `q2`, ...** only. Preserve names/identities through live edits where reasonably possible, without compromising correctness.
+- Build the ε-NFA with the **textbook Thompson construction**: each operator adds its own states and ε-transitions, so diagrams match what students build by hand. Expand bounded repetition into copies.
+- Use state names **`q0`, `q1`, `q2`, ...** only. Names are **canonical**: number every diagram `q0..qN` in breadth-first order from the initial state, so `q0` is always initial, there are no gaps, and the same regex and settings always give the same names.
+- Preserve node identities through live edits where reasonably possible, without compromising correctness. Identity matching is separate from naming: a matched node keeps its position, but its label may change.
 - Draw an initial-state arrow **from a dot** into the initial state. Draw accepting states with a **double outline**.
 - Combine transitions to the same target into one edge where possible. Label each edge with an exact, readable representation of its character set (ranges and common class shorthands when semantically correct).
 - Start with a default **limit of 200 rendered states**, adjustable in settings. On exceeding the limit, show an error and keep the last valid diagram. Bound computational work as well; never let state explosion freeze the tab.
