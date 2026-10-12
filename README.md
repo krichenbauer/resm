@@ -6,15 +6,35 @@ Everything runs locally in your browser. There is no backend, no account, no ana
 
 ## Status
 
-RESM is at the start of its development. **It does not draw automata yet.**
+RESM is under development. It already draws automata, but the diagram is still static.
 
-What exists today:
+What works today:
 
-- The application shell: a single-line regex field, a selector for the automaton representation (ε-NFA, NFA, DFA, minimized DFA; DFA is preselected), and an empty diagram area.
-- Light and dark appearance that follows the operating system setting.
-- The regex parser described under [Regex syntax](#regex-syntax). It is implemented and tested, but **not connected to the page yet**: typing into the field has no effect and shows no errors so far.
+- **Live diagram.** The automaton is recomputed and redrawn while you type. An empty field shows the single state `q0`, which is both initial and accepting.
+- **Four representations**, chosen with the selector next to the regex field: ε-NFA, NFA without ε-transitions, DFA (the default), and minimized DFA.
+- **Error messages** below the field when the regex is invalid or the automaton is too large. The last valid diagram stays visible meanwhile.
+- **Light and dark appearance** that follows the operating system setting.
 
-Not implemented yet: automaton construction, diagram rendering, layout and interaction, export, sharing, and settings. This section and the ones below are updated as features land.
+Not implemented yet: the option to show the sink state, the settings menu, panning and zooming, dragging states, animated transitions, SVG and PNG export, share links, and remembering the last regex. This section and the ones below are updated as features land.
+
+## Reading the diagram
+
+- States are named `q0`, `q1`, ... The initial state is always `q0`; the others are numbered in the order a breadth-first search from `q0` finds them, following transitions in ASCII order and ε-transitions in the order of the regex. The same regex therefore always gets the same names.
+- The initial state has an arrow that starts at a dot. Accepting states have a double outline.
+- All transitions between the same two states are drawn as one edge. Its label describes the exact set of characters in regex notation: `a`, `\d`, `[a-f]`, `[^"]`. A label with `ε` is an ε-transition.
+- Labels make invisible characters visible: `␣` is a space, and `\t`, `\n`, `\v`, `\f`, `\r`, `\0`, and `\x1f` stand for control characters. These spellings appear only in labels; the regex field does not accept them (see [Limitations](#limitations)).
+- A DFA is drawn without its sink state: if a state has no edge for a character, the input is rejected. In the minimized DFA, all states from which no accepting state can be reached are left out for the same reason.
+
+### How the automata are built
+
+- The **ε-NFA** follows Thompson's construction as found in textbooks. Each operator adds its own states and ε-transitions, and concatenated parts share the state between them. `x+` and `x?` are built like `x*` without the bypass and without the loop, respectively. Bounded repetition is expanded into copies, so `a{3}` is `aaa` and `a{1,3}` is `aa?a?`.
+- The **NFA** results from removing the ε-transitions: a state takes over the transitions of every state it reaches by ε alone. States that become unreachable are dropped.
+- The **DFA** results from the subset construction on that NFA.
+- The **minimized DFA** merges all states of the DFA that no input can tell apart.
+
+### Size limits
+
+A diagram may have at most 200 states. If the requested automaton is larger, RESM reports that instead of drawing it. Automata that are only intermediate steps, such as the DFA on the way to the minimized DFA, may have up to 2000 states; beyond that the expression is reported as too complex.
 
 ## Regex syntax
 
@@ -169,4 +189,4 @@ RESM_BASE_PATH=/some/path/ pnpm build
 
 RESM is free software, licensed under the GNU General Public License, version 3 or (at your option) any later version. See [LICENSE](LICENSE).
 
-The published site bundles [Lit](https://lit.dev) (BSD-3-Clause). The build writes the license notices of all bundled dependencies to `third-party-licenses.md`, which is served next to the application.
+The published site bundles [Lit](https://lit.dev) (BSD-3-Clause) and the layout library [dagre](https://github.com/dagrejs/dagre) (MIT). The build writes the license notices of all bundled dependencies to `third-party-licenses.md`, which is served next to the application.

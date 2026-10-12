@@ -43,7 +43,7 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - Ensure the automata recognize the exact language of the input expression. Keep transformations separately testable (e.g., epsilon removal, determinization, minimization).
 - By default, **omit the DFA sink/trap state** and its transitions; missing transitions mean rejection. Provide an option to show the sink and complete the DFA.
 - Build the ε-NFA with the **textbook Thompson construction**: each operator adds its own states and ε-transitions, so diagrams match what students build by hand. Expand bounded repetition into copies.
-- Use state names **`q0`, `q1`, `q2`, ...** only. Names are **canonical**: number every diagram `q0..qN` in breadth-first order from the initial state, so `q0` is always initial, there are no gaps, and the same regex and settings always give the same names.
+- Use state names **`q0`, `q1`, `q2`, ...** only. Names are **canonical**: number every diagram `q0..qN` in breadth-first order from the initial state, so `q0` is always initial, there are no gaps, and the same regex and settings always give the same names. A shown sink state is named last, so that toggling it does not rename the other states.
 - Preserve node identities through live edits where reasonably possible, without compromising correctness. Identity matching is separate from naming: a matched node keeps its position, but its label may change.
 - Draw an initial-state arrow **from a dot** into the initial state. Draw accepting states with a **double outline**.
 - Combine transitions to the same target into one edge where possible. Label each edge with an exact, readable representation of its character set (ranges and common class shorthands when semantically correct).
