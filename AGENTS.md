@@ -72,6 +72,20 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - Share through a URL fragment, containing the **regex and all relevant settings**, not serialized automata, graph coordinates, or image data. On opening a share link, URL settings take precedence over local storage. Recompute the diagram locally.
 - No account, server storage, or additional requests for any of the above.
 
+## Details settled during implementation
+
+These refine the sections above. `README.md` documents them for users.
+
+- **Limits:** repetition counts up to 1000; groups nested up to 100 deep; the state limit is adjustable from 1 to 500; automata that are only intermediate steps may have up to 2000 states, or four times the state limit if that is more.
+- **Thompson details:** `x+` and `x?` are built like `x*` without the bypass and without the loop; an alternation branches into all its options from one state.
+- **Edge labels:** regex notation, with `␣` for the space and `\n`, `\t`, `\x1f`, etc. for control characters; the whole alphabet is `[\x00-\x7f]`.
+- **Layout:** dagre places the states; edges are shaped by RESM itself so they can follow moving states. Back edges, loops, and edges that skip many layers are kept out of the layered layout, and a shown sink state is placed below the other states.
+- **Node identity:** a state is identified across edits by the labels along the path on which a breadth-first search first reaches it.
+- **Auto-fit:** the view zooms in on its own only when the diagram would be more than 2.5 times larger when fitted; a diagram is never enlarged beyond its natural size.
+- **Reduced motion:** if the operating system asks for it, changes appear at once.
+- **Export:** the settled layout, in the colors of the current theme, on a solid background; PNG sides are capped at 8192 pixels.
+- **Share links:** `#regex=...&automaton=...&sink=0|1&limit=...`. The theme is not shared. The fragment is removed from the address bar once it has been applied.
+
 ## Implementation order
 
 Work in vertical increments, with a usable tested artifact at each step. An incomplete implementation should remain buildable and should not claim unimplemented features in the README.

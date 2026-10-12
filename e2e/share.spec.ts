@@ -1,7 +1,26 @@
 import { expect, test } from '@playwright/test';
 import { regexField, representation, settingsButton, shareButton, showRegex, states, themeOption } from './support.ts';
 
-test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+// Only Chromium lets a test read the real clipboard. The other browsers get a
+// stand-in that records what the page copies.
+test.beforeEach(async ({ context, browserName }) => {
+  if (browserName === 'chromium') {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    return;
+  }
+  await context.addInitScript(() => {
+    let copied = '';
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: (text: string) => {
+          copied = text;
+          return Promise.resolve();
+        },
+        readText: () => Promise.resolve(copied),
+      },
+    });
+  });
+});
 
 const clipboard = (page: import('@playwright/test').Page) => page.evaluate(() => navigator.clipboard.readText());
 

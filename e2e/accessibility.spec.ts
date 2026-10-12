@@ -28,19 +28,25 @@ test('describes the diagram in words', async ({ page }) => {
   await expect(diagramArea(page)).toHaveAccessibleDescription(/^Minimized DFA with 3 states/);
 });
 
-test('reaches every control and the diagram with the keyboard, in reading order', async ({ page }) => {
+/**
+ * The key that moves the focus to the next control. Safari reserves the plain
+ * tab key for text fields unless the user has changed that in its settings.
+ */
+const tabKey = (browserName: string) => (browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
+
+test('reaches every control and the diagram with the keyboard, in reading order', async ({ page, browserName }) => {
   await regexField(page).focus();
   for (const next of [representation(page), exportButton(page), shareButton(page), settingsButton(page), diagramArea(page)]) {
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(tabKey(browserName));
     await expect(next).toBeFocused();
   }
 });
 
-test('opens a menu with the keyboard and returns the focus when it closes', async ({ page }) => {
+test('opens a menu with the keyboard and returns the focus when it closes', async ({ page, browserName }) => {
   await settingsButton(page).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('checkbox', { name: 'Show sink state' })).toBeVisible();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(tabKey(browserName));
   await expect(page.getByRole('checkbox', { name: 'Show sink state' })).toBeFocused();
   await page.keyboard.press('Space');
   await expect(page.getByRole('checkbox', { name: 'Show sink state' })).toBeChecked();

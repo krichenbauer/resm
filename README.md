@@ -4,19 +4,45 @@ RESM is a small, browser-only tool that turns a regular expression into an inter
 
 Everything runs locally in your browser. There is no backend, no account, no analytics, and no request to any third-party host.
 
-## Status
+## Features
 
-RESM is under development. The diagram is live and interactive; export, sharing, and settings are still missing.
-
-What works today:
-
-- **Live diagram.** The automaton is recomputed while you type. An empty field shows the single state `q0`, which is both initial and accepting.
+- **Live diagram.** The automaton is recomputed while you type. An empty field shows the single state `q0`, which is both initial and accepting. Nothing is prefilled.
 - **Four representations**, chosen with the selector next to the regex field: ε-NFA, NFA without ε-transitions, DFA (the default), and minimized DFA.
-- **A diagram that moves.** After an edit, the states that are still there glide into their new places like weights on springs, and new states grow out of the states that lead to them. See [Moving around](#moving-around).
+- **A diagram that moves.** After an edit, the states that are still there glide into their new places like weights on springs, and new states grow out of the states that lead to them. States can be dragged, and the canvas can be panned and zoomed. See [Moving around](#moving-around).
 - **Error messages** below the field when the regex is invalid or the automaton is too large. The last valid diagram stays visible meanwhile.
-- **Light and dark appearance** that follows the operating system setting.
+- **Export** of the whole diagram as SVG or PNG. See [Export](#export).
+- **Share links** that carry the regex and the settings. See [Sharing and remembering](#sharing-and-remembering).
+- **Settings** for the sink state, the size limit, and the theme. See [Settings](#settings).
 
-Not implemented yet: the option to show the sink state, the settings menu, SVG and PNG export, share links, remembering the last regex, and choosing the appearance by hand. This section and the ones below are updated as features land.
+## Browser support
+
+RESM needs a current version of Chrome, Edge, Firefox, or Safari, on desktop or mobile; in practice a release from 2024 or later. The automated tests run in Chromium, Firefox, and WebKit, with touch gestures simulated in Chromium. It has not been tested on physical phones or tablets.
+
+## Settings
+
+The **Settings** button opens a small menu. Together with the representation selector, these are all settings there are:
+
+| Setting                  | Default | Meaning |
+| ------------------------ | ------- | ------- |
+| Representation           | DFA     | Which automaton is drawn: ε-NFA, NFA, DFA, or minimized DFA. |
+| Show sink state          | off     | Completes the DFA or minimized DFA: every state gets an edge for every character, and input that can no longer be accepted leads to one extra, non-accepting state. Without it, a missing edge means rejection. Has no effect on the ε-NFA and the NFA. |
+| Maximum number of states | 200     | The largest diagram that is drawn, from 1 to 500 states. See [Size limits](#size-limits). |
+| Theme                    | System  | Light or dark appearance. "System" follows the operating system. |
+
+## Export
+
+The **Export** button opens a menu with two downloads:
+
+- **Download SVG** saves `resm-diagram.svg`, a vector image at the natural size of the diagram.
+- **Download PNG** saves `resm-diagram.png` with the width in pixels that you enter; 1600 is suggested. The height follows from the proportions of the diagram. Neither side can exceed 8192 pixels, which reduces the width of very tall diagrams.
+
+Both files show the complete diagram with a little padding, whatever part of it is on screen, and whatever the zoom level or the pixel density of the display. They show the diagram in its settled layout, without the effect of dragging, in the colors of the current theme on a solid background. The SVG file names fonts that are present on common systems instead of embedding them, so its text can look slightly different in other programs.
+
+## Sharing and remembering
+
+- **Share** copies a link to the clipboard. The link ends in a fragment such as `#regex=a%7Cb&automaton=min-dfa&sink=0&limit=200`: the regex, the representation, the sink option, and the size limit. It contains no automaton, no positions, and no image; whoever opens it computes the diagram again in their own browser. The theme is not part of the link. If the browser denies access to the clipboard, the link is shown in a dialog to copy by hand.
+- **Opening a share link** shows its regex with its settings, which take precedence over what the browser remembers. A setting that the link does not mention, and the theme, keep their remembered values. The fragment is then removed from the address bar, because it would no longer match after the next edit.
+- **The last regex and the settings are remembered** in the browser's local storage under the key `resm`, and restored on the next visit. Nothing else is stored, and nothing is sent anywhere. Without local storage, for example in some private browsing modes, RESM simply starts empty every time.
 
 ## Reading the diagram
 
@@ -24,7 +50,7 @@ Not implemented yet: the option to show the sink state, the settings menu, SVG a
 - The initial state has an arrow that starts at a dot. Accepting states have a double outline.
 - All transitions between the same two states are drawn as one edge. Its label describes the exact set of characters in regex notation: `a`, `\d`, `[a-f]`, `[^"]`. A label with `ε` is an ε-transition.
 - Labels make invisible characters visible: `␣` is a space, and `\t`, `\n`, `\v`, `\f`, `\r`, `\0`, and `\x1f` stand for control characters. These spellings appear only in labels; the regex field does not accept them (see [Limitations](#limitations)).
-- A DFA is drawn without its sink state: if a state has no edge for a character, the input is rejected. In the minimized DFA, all states from which no accepting state can be reached are left out for the same reason.
+- By default, a DFA is drawn without its sink state: if a state has no edge for a character, the input is rejected. In the minimized DFA, all states from which no accepting state can be reached are left out for the same reason. With the setting [Show sink state](#settings), the sink is drawn below the other states and is always named last, so that showing it does not rename them.
 
 ### Moving around
 
@@ -38,8 +64,16 @@ The diagram lies on a canvas without edges.
 
 - Zooming keeps the point under the pointer, or between the fingers, in place.
 - A dragged state pulls its neighbors along. When you let go, it is not pinned: it swings back to its place in the layout.
+- With the keyboard, when the diagram has the focus: the arrow keys move the view, `+` and `-` zoom, and `0` brings the whole diagram back at its natural size.
 - When the diagram changes and would no longer be entirely visible, the view moves and zooms out smoothly until it is, even if you had panned or zoomed before. The view does not zoom in merely because the diagram got smaller; it only does so once the diagram has become tiny in its area. A diagram that fits is never enlarged beyond its natural size.
 - Switching the representation replaces the diagram at once, without animation.
+- If the operating system asks for reduced motion, nothing is animated: every change appears at once.
+
+### Accessibility
+
+- All controls are standard form controls with labels and can be reached with the tab key. In Safari, the tab key skips buttons and menus unless "Press Tab to highlight each item on a webpage" is enabled; Option+Tab always works.
+- The menus close with the Escape key and return the focus to their button.
+- The diagram has a text description for screen readers that names the kind of automaton, its initial and accepting states, and every transition.
 
 ### How the automata are built
 
@@ -50,7 +84,9 @@ The diagram lies on a canvas without edges.
 
 ### Size limits
 
-A diagram may have at most 200 states. If the requested automaton is larger, RESM reports that instead of drawing it. Automata that are only intermediate steps, such as the DFA on the way to the minimized DFA, may have up to 2000 states; beyond that the expression is reported as too complex.
+A diagram may have at most 200 states, unless you change that in the [settings](#settings). If the requested automaton is larger, RESM reports that instead of drawing it. A shown sink state counts.
+
+Automata that are only intermediate steps, such as the DFA on the way to the minimized DFA, may be larger: up to 2000 states, or four times the display limit if that is more. Beyond that the expression is reported as too complex. These limits keep every computation short. The work also happens outside the page's main thread, so typing stays responsive in any case.
 
 ## Regex syntax
 
@@ -178,16 +214,36 @@ pnpm dev
 | `pnpm test:e2e`  | Build the site and run the browser tests with Playwright.       |
 | `pnpm check`     | Run all of the checks above in the order used by CI.            |
 
+### Source layout
+
+| Directory        | Contents |
+| ---------------- | -------- |
+| `src/regex/`     | Character sets, the syntax tree, and the parser. |
+| `src/automata/`  | Thompson's construction, ε-elimination, subset construction, minimization. |
+| `src/diagram/`   | State names, edge labels, size limits, and the description in words. |
+| `src/layout/`    | Positions of states, shapes of edges, and the view of the canvas. |
+| `src/motion/`    | The spring simulation and the smooth changes of view and edge shapes. |
+| `src/export/`    | SVG and PNG export. |
+| `src/settings/`  | Settings, share links, and local storage. |
+| `src/worker/`    | The web worker that computes diagrams, and its client. |
+| `src/ui/`        | The two Lit components: the application and the diagram. |
+| `e2e/`           | Browser tests. |
+| `build/`         | The build plugin that collects third-party license notices. |
+
+Everything outside `src/ui/`, `src/worker/`, and `src/export/download.ts` is independent of the browser and tested with Vitest alone.
+
 ### Tests
 
-Unit tests live next to the code they cover as `src/**/*.test.ts`. Browser tests live in `e2e/` and currently run in Chromium.
+Unit tests live next to the code they cover as `src/**/*.test.ts`. They include the language tests, which compare all four automata of many regexes against JavaScript's own regex engine as an independent reference, and the tests of the examples in this file.
+
+Browser tests live in `e2e/` and run in Chromium, Firefox, and WebKit. The tests of touch gestures run in Chromium only, because only its test interface can simulate several fingers. To run one browser, use `pnpm test:e2e --project=firefox`.
 
 The browser tests build the site and serve it from the subpath `/resm/`, the same way GitHub Pages does, so a broken base path fails locally. They also fail if the page requests anything from another host.
 
 Playwright needs browser binaries that match its version:
 
 - **NixOS (x86_64):** the flake provides patched browsers. `@playwright/test` in `package.json` is pinned to the Playwright version in the locked nixpkgs revision, currently 1.63.0. Change both together: after `nix flake update`, check the new version with `nix eval --raw --inputs-from . nixpkgs#playwright-driver.version` and pin `@playwright/test` to it.
-- **macOS:** install the browser once with `pnpm exec playwright install chromium`.
+- **macOS:** install the browsers once with `pnpm exec playwright install chromium firefox webkit`.
 
 ## Deployment
 
