@@ -23,11 +23,13 @@ describe('completion', () => {
       `2 -${ALL}-> 2`,
     ]);
     expect([...result.accepting]).toEqual([1]);
+    expect(result.sink).toBe(2);
   });
 
   it('leaves a DFA alone that already has every transition', () => {
     const input = dfa('[\\s\\S]*');
     expect(complete(input)).toBe(input);
+    expect(input.sink).toBeUndefined();
   });
 
   it('gives every state a transition for every character', () => {
@@ -103,6 +105,8 @@ describe('minimization', () => {
       `2 -${ALL}-> 1`,
     ]);
     expect([...result.accepting]).toEqual([2]);
+    expect(result.sink).toBe(1);
+    expect(minimal('a[^\\d\\D]|b').sink).toBeUndefined();
   });
 
   it('adds no sink state when every input can still be accepted', () => {
@@ -120,6 +124,8 @@ describe('minimization', () => {
     expect(shown.stateCount).toBe(1);
     expect(shown.accepting.size).toBe(0);
     expect(describeTransitions(shown)).toEqual([`0 -${ALL}-> 0`]);
+    // The initial state is never reported as the sink, so it keeps its place and name.
+    expect(shown.sink).toBeUndefined();
   });
 
   it('ignores states that cannot be reached', () => {

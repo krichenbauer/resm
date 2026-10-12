@@ -16,6 +16,8 @@ export interface Automaton {
   readonly start: number;
   readonly accepting: ReadonlySet<number>;
   readonly transitions: readonly Transition[];
+  /** The state that collects all rejected input, if a total DFA has one besides its initial state. */
+  readonly sink?: number;
 }
 
 /** Thrown when a construction would need more states than its budget allows. */

@@ -28,7 +28,7 @@ export function complete(dfa: Automaton): Automaton {
     return rest.isEmpty ? own : [...own, { from: state, to: sink, set: rest }];
   });
   transitions.push({ from: sink, to: sink, set: CharSet.ALL });
-  return { stateCount: dfa.stateCount + 1, start: dfa.start, accepting: dfa.accepting, transitions };
+  return { stateCount: dfa.stateCount + 1, start: dfa.start, accepting: dfa.accepting, transitions, sink };
 }
 
 /**
@@ -114,5 +114,13 @@ export function minimize(dfa: Automaton, options: { keepSink: boolean }): Automa
     for (const [to, set] of setByTarget) transitions.push({ from: state, to, set });
   }
 
-  return { stateCount: numberOf.size, start: 0, accepting, transitions };
+  // After minimization at most one class is not live. It is only reachable here if it was kept.
+  const sink = [...numberOf].find(([ownClass, state]) => state !== 0 && !live.has(ownClass))?.[1];
+  return {
+    stateCount: numberOf.size,
+    start: 0,
+    accepting,
+    transitions,
+    ...(sink === undefined ? {} : { sink }),
+  };
 }
