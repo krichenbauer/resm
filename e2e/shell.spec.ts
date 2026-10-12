@@ -62,3 +62,13 @@ test('loads every resource from its own host and base path', async ({ page, base
   expect(networkUrls.filter((url) => !url.startsWith(baseURL))).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });
+
+test('ships the license notices of bundled dependencies', async ({ request }) => {
+  const response = await request.get('./third-party-licenses.md');
+  expect(response.ok()).toBe(true);
+
+  const notices = await response.text();
+  expect(notices).toContain('lit');
+  expect(notices).toContain('BSD-3-Clause');
+  expect(notices).toContain('Copyright (c) 2017 Google LLC');
+});

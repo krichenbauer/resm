@@ -69,3 +69,5 @@ RESM_BASE_PATH=/some/path/ pnpm build
 ## License
 
 RESM is free software, licensed under the GNU General Public License, version 3 or (at your option) any later version. See [LICENSE](LICENSE).
+
+The published site bundles [Lit](https://lit.dev) (BSD-3-Clause). The build writes the license notices of all bundled dependencies to `third-party-licenses.md`, which is served next to the application.

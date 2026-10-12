@@ -6,6 +6,11 @@ const base = process.env.RESM_BASE_PATH ?? '/';
 
 export default defineConfig({
   base,
+  build: {
+    // Minification strips license comments, so ship the notices of bundled
+    // dependencies as a separate file.
+    license: { fileName: 'third-party-licenses.md' },
+  },
   test: {
     include: ['src/**/*.test.ts'],
   },
