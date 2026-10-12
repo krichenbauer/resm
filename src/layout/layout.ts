@@ -1,6 +1,13 @@
 import { Graph, layout } from '@dagrejs/dagre';
 import type { Diagram } from '../diagram/diagram.ts';
-import { type Point, STATE_RADIUS, arcPoints, estimateLabelWidth } from './geometry.ts';
+import {
+  type Point,
+  STATE_RADIUS,
+  arcGeometry,
+  arcPoints,
+  estimateLabelWidth,
+  loopGeometry,
+} from './geometry.ts';
 
 /** How an edge is drawn: as an arc between two states, or as a loop at one state. */
 export type EdgeShape =
@@ -13,8 +20,16 @@ export interface DiagramLayout {
   readonly shapes: readonly EdgeShape[];
 }
 
-/** Free space that an edge keeps around states it only passes. */
-const CLEARANCE = STATE_RADIUS + 8;
+/** Something round that edges and their labels lead around: a state, or part of a loop. */
+interface Obstacle extends Point {
+  readonly radius: number;
+}
+
+/** Free space that an edge keeps around an obstacle. */
+const CLEARANCE = 8;
+
+/** Free space that the label of an edge keeps around an obstacle. */
+const LABEL_CLEARANCE = 10;
 
 /** Bends to try for an edge, gentlest first. */
 const BENDS = [0, 0.16, -0.16, 0.3, -0.3, 0.48, -0.48];
@@ -30,18 +45,63 @@ const LOOP_ROOM = 0.8;
 
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
-/** Positions from a layered left-to-right layout, which keeps connections short and crossings few. */
+/**
+ * The edges that lead back to a state on the path by which a depth-first
+ * search from the initial state reached them. Without them, and without
+ * loops, the diagram has no cycles.
+ */
+function findBackEdges(diagram: Diagram): Set<number> {
+  const outgoing: number[][] = diagram.states.map(() => []);
+  diagram.edges.forEach(({ from }, index) => outgoing[from]?.push(index));
+
+  const backEdges = new Set<number>();
+  const visited = new Set<number>();
+  const onPath = new Set<number>();
+  for (let root = 0; root < diagram.states.length; root++) {
+    if (visited.has(root)) continue;
+    // Each entry is a state with the position of its next edge to follow.
+    const path: [state: number, next: number][] = [[root, 0]];
+    visited.add(root);
+    onPath.add(root);
+    for (let top = path.at(-1); top; top = path.at(-1)) {
+      const [state, next] = top;
+      const index = outgoing[state]?.[next];
+      const target = index === undefined ? undefined : diagram.edges[index]?.to;
+      if (index === undefined || target === undefined) {
+        onPath.delete(state);
+        path.pop();
+        continue;
+      }
+      top[1]++;
+      if (onPath.has(target)) {
+        if (target !== state) backEdges.add(index);
+      } else if (!visited.has(target)) {
+        visited.add(target);
+        onPath.add(target);
+        path.push([target, 0]);
+      }
+    }
+  }
+  return backEdges;
+}
+
+/**
+ * Positions from a layered left-to-right layout, which keeps connections
+ * short and crossings few. Only the edges that lead forward take part: back
+ * edges and loops are drawn around the states afterwards, and reserving
+ * lanes for them would push the states of a simple chain out of line.
+ */
 function placeStates(diagram: Diagram): Point[] {
   const graph = new Graph();
   graph.setGraph({ rankdir: 'LR', nodesep: 56, ranksep: 64 });
   diagram.states.forEach((_, index) => {
     graph.setNode(String(index), { width: STATE_RADIUS * 2, height: STATE_RADIUS * 2 });
   });
-  for (const { from, to, label } of diagram.edges) {
-    // Loops need no room between the layers.
-    if (from === to) continue;
+  const backEdges = findBackEdges(diagram);
+  diagram.edges.forEach(({ from, to, label }, index) => {
+    if (from === to || backEdges.has(index)) return;
     graph.setEdge(String(from), String(to), { width: estimateLabelWidth(label), height: 18, labelpos: 'c' });
-  }
+  });
   layout(graph);
   return diagram.states.map((_, index) => {
     const { x, y } = graph.node(String(index));
@@ -49,20 +109,47 @@ function placeStates(diagram: Diagram): Point[] {
   });
 }
 
-/** The gentlest bend that keeps the edge clear of all `others`, or else the clearest one. */
-function chooseBend(from: Point, to: Point, others: readonly Point[], candidates: readonly number[]): number {
+/** The space that the loop of a state takes up: the loop itself and its label. */
+function loopObstacles(center: Point, angle: number): Obstacle[] {
+  const { label } = loopGeometry(center, angle);
+  const between = (share: number) => ({
+    x: center.x + (label.x - center.x) * share,
+    y: center.y + (label.y - center.y) * share,
+  });
+  return [
+    { ...between(0.6), radius: STATE_RADIUS * 0.55 },
+    { ...label, radius: STATE_RADIUS * 0.4 },
+  ];
+}
+
+/** The gentlest bend that keeps the edge and its label clear of all `others`, or else the clearest one. */
+function chooseBend(
+  from: Point,
+  to: Point,
+  labelWidth: number,
+  others: readonly Obstacle[],
+  candidates: readonly number[],
+): number {
   const samples = Math.max(8, Math.ceil(distance(from, to) / 8));
   let best = candidates[0] ?? 0;
-  let bestClearance = -Infinity;
+  let bestMargin = -Infinity;
   for (const bend of candidates) {
-    let clearance = Infinity;
-    for (const point of arcPoints(from, to, bend, samples)) {
-      for (const other of others) clearance = Math.min(clearance, distance(point, other));
+    // How much more room than required there is; negative if something is too close.
+    let margin = Infinity;
+    const { label } = arcGeometry(from, to, bend, labelWidth);
+    const labelPoints = [-labelWidth / 2, 0, labelWidth / 2].map((offset) => ({ x: label.x + offset, y: label.y }));
+    for (const other of others) {
+      for (const point of arcPoints(from, to, bend, samples)) {
+        margin = Math.min(margin, distance(point, other) - other.radius - CLEARANCE);
+      }
+      for (const point of labelPoints) {
+        margin = Math.min(margin, distance(point, other) - other.radius - LABEL_CLEARANCE);
+      }
     }
-    if (clearance >= CLEARANCE) return bend;
-    if (clearance > bestClearance) {
+    if (margin >= 0) return bend;
+    if (margin > bestMargin) {
       best = bend;
-      bestClearance = clearance;
+      bestMargin = margin;
     }
   }
   return best;
@@ -101,11 +188,21 @@ export function layoutDiagram(diagram: Diagram): DiagramLayout {
     occupied[to]?.push(angle + Math.PI);
   }
 
-  const shapes = diagram.edges.map(({ from, to }): EdgeShape => {
-    if (from === to) return { kind: 'loop', angle: chooseLoopAngle(occupied[from] ?? []) };
-    const others = positions.filter((_, state) => state !== from && state !== to);
+  // Loops first: the arcs then lead around them as well as around the states.
+  const obstacles: Obstacle[][] = positions.map((position) => [{ ...position, radius: STATE_RADIUS }]);
+  const loopAngles = new Map<number, number>();
+  for (const { from, to } of diagram.edges) {
+    if (from !== to) continue;
+    const angle = chooseLoopAngle(occupied[from] ?? []);
+    loopAngles.set(from, angle);
+    obstacles[from]?.push(...loopObstacles(at(from), angle));
+  }
+
+  const shapes = diagram.edges.map(({ from, to, label }): EdgeShape => {
+    if (from === to) return { kind: 'loop', angle: loopAngles.get(from) ?? 0 };
+    const others = obstacles.flatMap((own, state) => (state === from || state === to ? [] : own));
     const candidates = connected.has(`${to},${from}`) ? PAIRED_BENDS : BENDS;
-    return { kind: 'arc', bend: chooseBend(at(from), at(to), others, candidates) };
+    return { kind: 'arc', bend: chooseBend(at(from), at(to), estimateLabelWidth(label), others, candidates) };
   });
 
   return { positions, shapes };

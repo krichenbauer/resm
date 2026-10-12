@@ -5,6 +5,7 @@ import { DEFAULT_STATE_LIMIT, buildDiagram } from '../diagram/pipeline.ts';
 import { REPRESENTATIONS, type Representation } from '../settings/representation.ts';
 import { STATE_RADIUS, arcPoints } from './geometry.ts';
 import { layoutDiagram } from './layout.ts';
+import { buildScene } from './scene.ts';
 
 function diagramOf(regex: string, representation: Representation = 'dfa', showSink = false): Diagram {
   const result = buildDiagram({ regex, representation, showSink, stateLimit: DEFAULT_STATE_LIMIT });
@@ -40,6 +41,23 @@ describe('layout', () => {
     expect(xs).toEqual([...xs].sort((a, b) => a - b));
     expect(new Set(xs).size).toBe(4);
     expect(new Set(positions.map((position) => Math.round(position.y))).size).toBe(1);
+  });
+
+  it('keeps the states of a textbook DFA in a row and leads its back edges around them', () => {
+    const diagram = diagramOf('(a|b)*abb', 'min-dfa');
+    const { positions, shapes } = layoutDiagram(diagram);
+    const xs = positions.map((position) => position.x);
+    expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    expect(new Set(positions.map((position) => Math.round(position.y))).size).toBe(1);
+
+    const bendOf = (id: string) => {
+      const index = diagram.edges.findIndex(({ from, to }) => `${from}-${to}` === id);
+      const shape = shapes[index];
+      return shape?.kind === 'arc' ? shape.bend : undefined;
+    };
+    expect(bendOf('0-1')).toBe(0);
+    expect(bendOf('3-0')).not.toBe(0);
+    expect(bendOf('3-1')).not.toBe(0);
   });
 
   it('puts the initial state at the left edge', () => {
@@ -86,6 +104,46 @@ describe('layout', () => {
         expect(distance(first, second), `q${a} and q${b}`).toBeGreaterThanOrEqual(STATE_RADIUS * 2 + 10);
       }
     }
+  });
+
+  it.each(CASES)('keeps labels off other states for $regex as $id (sink: $showSink)', ({ regex, id, showSink }) => {
+    const diagram = diagramOf(regex, id, showSink);
+    const { positions, shapes } = layoutDiagram(diagram);
+    const scene = buildScene(diagram, positions, shapes);
+    diagram.edges.forEach(({ from, to }, index) => {
+      const label = scene.edges[index]?.label;
+      if (!label || from === to) return;
+      positions.forEach((position, state) => {
+        if (state === from || state === to) return;
+        expect(distance(label, position), `label of q${from} to q${to} near q${state}`).toBeGreaterThan(
+          STATE_RADIUS + 6,
+        );
+      });
+    });
+  });
+
+  it.each(CASES)('routes no edge through a loop for $regex as $id (sink: $showSink)', ({ regex, id, showSink }) => {
+    const diagram = diagramOf(regex, id, showSink);
+    const { positions, shapes } = layoutDiagram(diagram);
+    const loops = diagram.edges.flatMap(({ from }, index) => {
+      const shape = shapes[index];
+      const center = positions[from];
+      if (shape?.kind !== 'loop' || !center) return [];
+      // The middle of the loop, between the outline of its state and its outermost point.
+      const reach = STATE_RADIUS * 1.55;
+      return [{ state: from, x: center.x + reach * Math.cos(shape.angle), y: center.y + reach * Math.sin(shape.angle) }];
+    });
+    diagram.edges.forEach(({ from, to }, index) => {
+      const shape = shapes[index];
+      const [start, end] = [positions[from], positions[to]];
+      if (!shape || shape.kind !== 'arc' || !start || !end) return;
+      for (const point of arcPoints(start, end, shape.bend, 24)) {
+        for (const loop of loops) {
+          if (loop.state === from || loop.state === to) continue;
+          expect(distance(point, loop), `q${from} to q${to} near the loop of q${loop.state}`).toBeGreaterThan(12);
+        }
+      }
+    });
   });
 
   it.each(CASES)('routes no edge through a state for $regex as $id (sink: $showSink)', ({ regex, id, showSink }) => {
