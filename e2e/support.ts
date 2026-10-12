@@ -79,3 +79,11 @@ export async function recordPositions(page: Page, names: readonly string[]) {
     },
   };
 }
+
+export const exportButton = (page: Page) => page.getByRole('button', { name: 'Export' });
+export const shareButton = (page: Page) => page.getByRole('button', { name: 'Share' });
+export const settingsButton = (page: Page) => page.getByRole('button', { name: 'Settings' });
+export const sinkOption = (page: Page) => page.getByRole('checkbox', { name: 'Show sink state' });
+export const stateLimitOption = (page: Page) => page.getByRole('spinbutton', { name: 'Maximum number of states' });
+export const themeOption = (page: Page) => page.getByRole('combobox', { name: 'Theme' });
+export const pngWidthOption = (page: Page) => page.getByRole('spinbutton', { name: 'PNG width in pixels' });

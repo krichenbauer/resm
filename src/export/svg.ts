@@ -54,9 +54,10 @@ function escapeXml(text: string): string {
 /**
  * Draws a scene as a standalone SVG document. It shows the whole diagram,
  * whatever part of it is visible on screen, and carries its own colors and
- * fonts instead of referring to the page.
+ * fonts instead of referring to the page. `size` is the size at which the
+ * document asks to be displayed; by default the natural size of the diagram.
  */
-export function renderSvg(scene: Scene, palette: Palette): string {
+export function renderSvg(scene: Scene, palette: Palette, size: Size = exportSize(scene.bounds)): string {
   const { width, height } = exportSize(scene.bounds);
   const x = scene.bounds.minX - EXPORT_PADDING;
   const y = scene.bounds.minY - EXPORT_PADDING;
@@ -81,8 +82,9 @@ export function renderSvg(scene: Scene, palette: Palette): string {
   );
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${width} ${height}" width="${width}" height="${height}">`,
-    `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${palette.surface}"/>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${width} ${height}" width="${size.width}" height="${size.height}">`,
+    // The background reaches beyond the edges, so that no edge pixel is left half transparent.
+    `<rect x="${x - 1}" y="${y - 1}" width="${width + 2}" height="${height + 2}" fill="${palette.surface}"/>`,
     '<defs>',
     `<marker id="resm-arrowhead" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="${ARROWHEAD_SIZE}" markerHeight="${ARROWHEAD_SIZE}" markerUnits="userSpaceOnUse" orient="auto">`,
     `<path d="${ARROWHEAD_PATH}" fill="${palette.line}" stroke="none"/>`,

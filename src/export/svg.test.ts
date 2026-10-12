@@ -38,6 +38,14 @@ describe('SVG export', () => {
     expect(text).toContain(`width="${width}" height="${height}"`);
   });
 
+  it('can ask to be displayed at another size without changing what it shows', () => {
+    const scene = sceneOf('ab');
+    const { width, height } = exportSize(scene.bounds);
+    const text = renderSvg(scene, LIGHT, { width: 3000, height: 500 });
+    expect(text).toContain('width="3000" height="500"');
+    expect(text).toContain(` ${width} ${height}"`);
+  });
+
   it('draws every state, the initial arrow, and the double outline of accepting states', () => {
     const text = renderSvg(sceneOf('ab'), LIGHT);
     for (const name of ['q', '0', '1', '2']) expect(text).toContain(`>${name}<`);

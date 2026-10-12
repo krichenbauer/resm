@@ -1,4 +1,4 @@
-import { LitElement, type PropertyValues, css, html, nothing, svg } from 'lit';
+import { LitElement, type PropertyValues, css, html, nothing, svg, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Diagram } from '../diagram/diagram.ts';
@@ -12,13 +12,24 @@ import {
   buildScene,
   edgeKey,
 } from '../layout/scene.ts';
+import {
+  ACCEPTING_GAP,
+  ARROWHEAD_PATH,
+  ARROWHEAD_SIZE,
+  INITIAL_DOT_RADIUS,
+  LABEL_FONT_FAMILY,
+  LABEL_FONT_SIZE,
+  LABEL_HALO_WIDTH,
+  LINE_WIDTH,
+  NAME_FONT_FAMILY,
+  NAME_FONT_SIZE,
+  NAME_INDEX_DROP,
+  NAME_INDEX_FONT_SIZE,
+} from '../layout/style.ts';
 import { type Area, adjustView, fitView, panBy, toWorld, viewBoxOf, zoomAt } from '../layout/viewport.ts';
 import { ShapeMotion } from '../motion/shape-motion.ts';
 import { Simulation } from '../motion/simulation.ts';
 import { ViewMotion } from '../motion/view-motion.ts';
-
-/** Gap between the two outlines of an accepting state. */
-const ACCEPTING_GAP = 4;
 
 /** Zoom per pixel of wheel movement, as an exponent. One notch of a mouse wheel is about 100 pixels. */
 const WHEEL_ZOOM = 0.002;
@@ -29,11 +40,19 @@ const TRACKPAD_PINCH_ZOOM = 0.01;
 /** Longest time between two frames that is simulated, in seconds. */
 const MAX_FRAME = 0.1;
 
+/** Distance in screen pixels that an arrow key moves the view. */
+const KEY_PAN = 40;
+
+/** Factor by which the plus and minus keys zoom. */
+const KEY_ZOOM = 1.25;
+
 /** A diagram to show, and whether to move there from the diagram shown before or to switch at once. */
 export interface DiagramUpdate {
   readonly diagram: Diagram;
   readonly layout: DiagramLayout;
   readonly animate: boolean;
+  /** The diagram in words, for readers who cannot see it. */
+  readonly description: string;
 }
 
 /** What the pointers on the canvas are currently doing. */
@@ -70,6 +89,28 @@ export class ResmDiagram extends LitElement {
       cursor: grabbing;
     }
 
+    svg:focus-visible {
+      outline: 2px solid var(--resm-focus);
+      outline-offset: -2px;
+    }
+
+    /* Read by screen readers only. */
+    .description {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .state,
+      .edge {
+        animation: none !important;
+      }
+    }
+
     .state,
     .edge {
       animation: appear 250ms ease-out;
@@ -84,7 +125,7 @@ export class ResmDiagram extends LitElement {
     path {
       fill: none;
       stroke: var(--resm-line);
-      stroke-width: 1.5;
+      stroke-width: ${LINE_WIDTH};
     }
 
     marker path,
@@ -96,7 +137,7 @@ export class ResmDiagram extends LitElement {
     .outline {
       fill: var(--resm-state);
       stroke: var(--resm-line);
-      stroke-width: 1.5;
+      stroke-width: ${LINE_WIDTH};
     }
 
     text {
@@ -108,19 +149,19 @@ export class ResmDiagram extends LitElement {
     }
 
     .name {
-      font: 15px system-ui, sans-serif;
+      font: ${NAME_FONT_SIZE}px ${unsafeCSS(NAME_FONT_FAMILY)};
     }
 
     .index {
-      font-size: 11px;
+      font-size: ${NAME_INDEX_FONT_SIZE}px;
     }
 
     .edge text {
-      font: 13px ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+      font: ${LABEL_FONT_SIZE}px ${unsafeCSS(LABEL_FONT_FAMILY)};
       /* A halo in the background color keeps labels legible where they cross a line. */
       paint-order: stroke;
       stroke: var(--resm-surface);
-      stroke-width: 4px;
+      stroke-width: ${LABEL_HALO_WIDTH}px;
       stroke-linejoin: round;
     }
   `;
@@ -136,6 +177,9 @@ export class ResmDiagram extends LitElement {
   private readonly viewMotion = new ViewMotion({ x: 0, y: 0, scale: 1 });
   /** Whether the view has been fitted to a diagram yet. Until then there is nothing to move it from. */
   private viewFitted = false;
+
+  /** People who ask for reduced motion get every change at once instead of an animation. */
+  private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
   private readonly pointers = new Map<number, Point>();
   private gesture?: Gesture;
@@ -166,7 +210,7 @@ export class ResmDiagram extends LitElement {
   }
 
   private show({ diagram, layout, animate }: DiagramUpdate): void {
-    const move = animate && this.diagram !== undefined;
+    const move = animate && this.diagram !== undefined && !this.reducedMotion.matches;
     this.endGesture();
     this.diagram = diagram;
     this.simulation.setGraph(
@@ -195,7 +239,7 @@ export class ResmDiagram extends LitElement {
     const heading = this.viewMotion.destination;
     const adjusted = adjustView(heading, this.area, this.settledBounds);
     if (adjusted === heading) return;
-    if (smoothly) this.viewMotion.glideTo(adjusted);
+    if (smoothly && !this.reducedMotion.matches) this.viewMotion.glideTo(adjusted);
     else this.viewMotion.jumpTo(adjusted);
   }
 
@@ -297,8 +341,35 @@ export class ResmDiagram extends LitElement {
 
   /** Ends the current gesture. A dragged state is released, not pinned: the springs take it back. */
   private endGesture(): void {
-    if (this.gesture?.kind === 'drag') this.simulation.release(this.gesture.state);
+    if (this.gesture?.kind === 'drag') {
+      this.simulation.release(this.gesture.state);
+      if (this.reducedMotion.matches) this.simulation.settle();
+    }
     this.gesture = undefined;
+  }
+
+  private onKeyDown(event: KeyboardEvent): void {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const view = this.viewMotion.current;
+    const center = { x: this.area.width / 2, y: this.area.height / 2 };
+    // The arrow keys move the view, like scrolling: the diagram goes the other way.
+    const moves: Record<string, () => void> = {
+      ArrowLeft: () => this.viewMotion.jumpTo(panBy(view, KEY_PAN, 0)),
+      ArrowRight: () => this.viewMotion.jumpTo(panBy(view, -KEY_PAN, 0)),
+      ArrowUp: () => this.viewMotion.jumpTo(panBy(view, 0, KEY_PAN)),
+      ArrowDown: () => this.viewMotion.jumpTo(panBy(view, 0, -KEY_PAN)),
+      '+': () => this.viewMotion.jumpTo(zoomAt(view, this.area, center, KEY_ZOOM)),
+      '=': () => this.viewMotion.jumpTo(zoomAt(view, this.area, center, KEY_ZOOM)),
+      '-': () => this.viewMotion.jumpTo(zoomAt(view, this.area, center, 1 / KEY_ZOOM)),
+      '0': () => {
+        if (this.settledBounds) this.viewMotion.jumpTo(fitView(this.settledBounds, this.area));
+      },
+    };
+    const move = moves[event.key];
+    if (!move) return;
+    event.preventDefault();
+    move();
+    this.wake();
   }
 
   private onWheel(event: WheelEvent): void {
@@ -316,9 +387,12 @@ export class ResmDiagram extends LitElement {
     const sized = this.area.width > 0 && this.area.height > 0;
     const box = sized && this.viewFitted ? viewBoxOf(this.viewMotion.current, this.area) : undefined;
     return html`
+      <p class="description" id="description">${this.shown?.description}</p>
       <svg
         role="img"
         aria-label="Automaton diagram"
+        aria-describedby="description"
+        tabindex="0"
         class=${this.gesture ? 'grabbing' : ''}
         viewBox=${box ? `${box.x} ${box.y} ${box.width} ${box.height}` : nothing}
         ?data-settled=${scene !== undefined && box !== undefined && this.settled && !this.gesture}
@@ -327,6 +401,7 @@ export class ResmDiagram extends LitElement {
         @pointerup=${this.onPointerUp}
         @pointercancel=${this.onPointerUp}
         @wheel=${this.onWheel}
+        @keydown=${this.onKeyDown}
       >
         <defs>
           <marker
@@ -334,12 +409,12 @@ export class ResmDiagram extends LitElement {
             viewBox="0 0 10 10"
             refX="9.5"
             refY="5"
-            markerWidth="9"
-            markerHeight="9"
+            markerWidth=${ARROWHEAD_SIZE}
+            markerHeight=${ARROWHEAD_SIZE}
             markerUnits="userSpaceOnUse"
             orient="auto"
           >
-            <path d="M0 1L10 5L0 9z" />
+            <path d=${ARROWHEAD_PATH} />
           </marker>
         </defs>
         ${repeat(scene?.edges ?? [], (edge) => edge.key, renderEdge)}
@@ -372,14 +447,14 @@ function renderState({ name, x, y, initial, accepting }: SceneState, index: numb
       ${
         initial
           ? svg`
-              <circle class="initial-dot" cx=${arrowStart} r="3.5" />
+              <circle class="initial-dot" cx=${arrowStart} r=${INITIAL_DOT_RADIUS} />
               <path class="initial-arrow" d="M${arrowStart} 0H${-STATE_RADIUS}" marker-end="url(#arrowhead)" />
             `
           : nothing
       }
       <circle class="outline" r=${STATE_RADIUS} />
       ${accepting ? svg`<circle class="outline" r=${STATE_RADIUS - ACCEPTING_GAP} />` : nothing}
-      <text class="name">${name.slice(0, 1)}<tspan class="index" dy="4">${name.slice(1)}</tspan></text>
+      <text class="name">${name.slice(0, 1)}<tspan class="index" dy=${NAME_INDEX_DROP}>${name.slice(1)}</tspan></text>
     </g>
   `;
 }

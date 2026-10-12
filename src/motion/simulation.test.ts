@@ -181,6 +181,20 @@ describe('spring simulation', () => {
     expect(Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0))).toBeGreaterThan(STATE_RADIUS);
   });
 
+  it('can be put to rest at once', () => {
+    const simulation = started();
+    const { nodes, links } = chain(300);
+    simulation.setGraph(nodes, links, { animate: true });
+    run(simulation, 0.1);
+    simulation.settle();
+    expect(simulation.settled).toBe(true);
+    expect(simulation.positions()).toEqual(nodes.map((node) => node.target));
+
+    simulation.grab(0);
+    simulation.settle();
+    expect(simulation.settled).toBe(false);
+  });
+
   it('is deterministic', () => {
     const trace = () => {
       const simulation = started();

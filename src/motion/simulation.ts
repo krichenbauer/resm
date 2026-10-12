@@ -179,6 +179,18 @@ export class Simulation {
     }
   }
 
+  /** Puts every node that is not held into its target position at once. */
+  settle(): void {
+    for (let index = 0; index < this.keys.length; index++) {
+      if (this.held[index]) continue;
+      this.x[index] = this.targetX[index]!;
+      this.y[index] = this.targetY[index]!;
+      this.vx[index] = 0;
+      this.vy[index] = 0;
+    }
+    this.rest();
+  }
+
   /** Advances the simulation by the given time in seconds. */
   step(seconds: number): void {
     if (this.atRest) return;
