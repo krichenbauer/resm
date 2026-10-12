@@ -1,4 +1,5 @@
-import type { DiagramRequest, DiagramResult } from '../diagram/pipeline.ts';
+import type { DiagramRequest } from '../diagram/pipeline.ts';
+import type { ComputeResult } from './compute.ts';
 
 export interface WorkerRequest {
   readonly id: number;
@@ -7,7 +8,7 @@ export interface WorkerRequest {
 
 export interface WorkerResponse {
   readonly id: number;
-  readonly result: DiagramResult;
+  readonly result: ComputeResult;
 }
 
 /** The part of a web worker that the client uses. */
@@ -32,7 +33,7 @@ export class DiagramClient {
 
   constructor(
     private readonly worker: DiagramWorker,
-    private readonly onResult: (result: DiagramResult) => void,
+    private readonly onResult: (result: ComputeResult) => void,
   ) {
     worker.addEventListener('message', ({ data }) => this.settle(data.id, data.result));
     worker.addEventListener('error', () => {
@@ -62,7 +63,7 @@ export class DiagramClient {
     this.worker.postMessage({ id: this.inFlight, request });
   }
 
-  private settle(id: number, result: DiagramResult): void {
+  private settle(id: number, result: ComputeResult): void {
     if (this.disposed || id !== this.inFlight) return;
     this.inFlight = null;
     const next = this.waiting;

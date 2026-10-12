@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_STATE_LIMIT, type DiagramRequest, type DiagramResult, buildDiagram } from '../diagram/pipeline.ts';
+import { DEFAULT_STATE_LIMIT, type DiagramRequest } from '../diagram/pipeline.ts';
+import { type ComputeResult, computeDiagram } from './compute.ts';
 import { DiagramClient, type DiagramWorker, type WorkerRequest, type WorkerResponse } from './diagram-client.ts';
 
 /** A worker stand-in that computes real results but answers only when the test says so. */
@@ -27,7 +28,7 @@ class FakeWorker implements DiagramWorker {
   answerNext(): void {
     const message = this.received[this.answered++];
     if (!message) throw new Error('No request to answer');
-    const data = { id: message.id, result: buildDiagram(message.request) };
+    const data = { id: message.id, result: computeDiagram(message.request) };
     for (const listener of this.listeners.message) listener({ data });
   }
 
@@ -48,7 +49,7 @@ const request = (regex: string): DiagramRequest => ({
 
 function setup() {
   const worker = new FakeWorker();
-  const results: DiagramResult[] = [];
+  const results: ComputeResult[] = [];
   const client = new DiagramClient(worker, (result) => results.push(result));
   const stateCounts = () => results.map((result) => (result.ok ? result.diagram.states.length : result.error.kind));
   return { worker, client, results, stateCounts };
