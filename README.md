@@ -6,16 +6,17 @@ Everything runs locally in your browser. There is no backend, no account, no ana
 
 ## Status
 
-RESM is under development. It already draws automata, but the diagram is still static.
+RESM is under development. The diagram is live and interactive; export, sharing, and settings are still missing.
 
 What works today:
 
-- **Live diagram.** The automaton is recomputed and redrawn while you type. An empty field shows the single state `q0`, which is both initial and accepting.
+- **Live diagram.** The automaton is recomputed while you type. An empty field shows the single state `q0`, which is both initial and accepting.
 - **Four representations**, chosen with the selector next to the regex field: ε-NFA, NFA without ε-transitions, DFA (the default), and minimized DFA.
+- **A diagram that moves.** After an edit, the states that are still there glide into their new places like weights on springs, and new states grow out of the states that lead to them. See [Moving around](#moving-around).
 - **Error messages** below the field when the regex is invalid or the automaton is too large. The last valid diagram stays visible meanwhile.
 - **Light and dark appearance** that follows the operating system setting.
 
-Not implemented yet: the option to show the sink state, the settings menu, panning and zooming, dragging states, animated transitions, SVG and PNG export, share links, and remembering the last regex. This section and the ones below are updated as features land.
+Not implemented yet: the option to show the sink state, the settings menu, SVG and PNG export, share links, remembering the last regex, and choosing the appearance by hand. This section and the ones below are updated as features land.
 
 ## Reading the diagram
 
@@ -24,6 +25,21 @@ Not implemented yet: the option to show the sink state, the settings menu, panni
 - All transitions between the same two states are drawn as one edge. Its label describes the exact set of characters in regex notation: `a`, `\d`, `[a-f]`, `[^"]`. A label with `ε` is an ε-transition.
 - Labels make invisible characters visible: `␣` is a space, and `\t`, `\n`, `\v`, `\f`, `\r`, `\0`, and `\x1f` stand for control characters. These spellings appear only in labels; the regex field does not accept them (see [Limitations](#limitations)).
 - A DFA is drawn without its sink state: if a state has no edge for a character, the input is rejected. In the minimized DFA, all states from which no accepting state can be reached are left out for the same reason.
+
+### Moving around
+
+The diagram lies on a canvas without edges.
+
+| Action              | Mouse or trackpad                    | Touch                    |
+| ------------------- | ------------------------------------ | ------------------------ |
+| Move the canvas     | Drag the background                  | Drag with one finger     |
+| Zoom                | Turn the wheel, or pinch on a trackpad | Pinch with two fingers |
+| Move a state        | Drag the state                       | Drag the state           |
+
+- Zooming keeps the point under the pointer, or between the fingers, in place.
+- A dragged state pulls its neighbors along. When you let go, it is not pinned: it swings back to its place in the layout.
+- When the diagram changes and would no longer be entirely visible, the view moves and zooms out smoothly until it is, even if you had panned or zoomed before. The view does not zoom in merely because the diagram got smaller; it only does so once the diagram has become tiny in its area. A diagram that fits is never enlarged beyond its natural size.
+- Switching the representation replaces the diagram at once, without animation.
 
 ### How the automata are built
 
