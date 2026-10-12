@@ -54,6 +54,25 @@ export class CharSet {
     return new CharSet(this.bits | other.bits);
   }
 
+  intersection(other: CharSet): CharSet {
+    return new CharSet(this.bits & other.bits);
+  }
+
+  /** The members of this set that are not in `other`. */
+  minus(other: CharSet): CharSet {
+    return new CharSet(this.bits & ~other.bits);
+  }
+
+  /** Whether the sets have at least one member in common. */
+  intersects(other: CharSet): boolean {
+    return (this.bits & other.bits) !== 0n;
+  }
+
+  /** Whether every member of `other` is a member of this set. */
+  contains(other: CharSet): boolean {
+    return (other.bits & ~this.bits) === 0n;
+  }
+
   /** All ASCII characters that are not in this set. */
   complement(): CharSet {
     return new CharSet(this.bits ^ ALL_BITS);

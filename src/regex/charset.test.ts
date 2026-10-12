@@ -57,6 +57,27 @@ describe('CharSet', () => {
     expect(notA.complement().equals(CharSet.of('a'))).toBe(true);
   });
 
+  it('intersects and subtracts sets', () => {
+    const lower = CharSet.range('a', 'f');
+    const upper = CharSet.range('d', 'z');
+    expect(lower.intersection(upper).equals(CharSet.range('d', 'f'))).toBe(true);
+    expect(lower.minus(upper).equals(CharSet.range('a', 'c'))).toBe(true);
+    expect(lower.minus(lower).isEmpty).toBe(true);
+    expect(lower.intersection(CharSet.of('z')).isEmpty).toBe(true);
+  });
+
+  it('tells whether two sets overlap', () => {
+    expect(CharSet.range('a', 'f').intersects(CharSet.of('fz'))).toBe(true);
+    expect(CharSet.range('a', 'f').intersects(CharSet.of('gz'))).toBe(false);
+    expect(CharSet.EMPTY.intersects(CharSet.ALL)).toBe(false);
+  });
+
+  it('tells whether a set contains another', () => {
+    expect(CharSet.range('a', 'f').contains(CharSet.of('af'))).toBe(true);
+    expect(CharSet.range('a', 'f').contains(CharSet.of('ag'))).toBe(false);
+    expect(CharSet.of('a').contains(CharSet.EMPTY)).toBe(true);
+  });
+
   it('compares by content', () => {
     expect(CharSet.of('abc').equals(CharSet.range('a', 'c'))).toBe(true);
     expect(CharSet.of('abc').equals(CharSet.of('abd'))).toBe(false);

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Automaton } from './automaton.ts';
 import { HAND_CORPUS, ORACLE_CORPUS } from './corpus.ts';
+import { determinize } from './determinize.ts';
 import { removeEpsilons } from './epsilon-removal.ts';
-import { accepts, epsilonNfa, stringsUpTo } from './test-support.ts';
+import { TEST_STATE_BUDGET, accepts, epsilonNfa, stringsUpTo } from './test-support.ts';
 
 const REPRESENTATIONS: Record<string, (regex: string) => Automaton> = {
   'ε-NFA': epsilonNfa,
   NFA: (regex) => removeEpsilons(epsilonNfa(regex)),
+  DFA: (regex) => determinize(removeEpsilons(epsilonNfa(regex)), TEST_STATE_BUDGET),
 };
 
 /** Longest test string for an alphabet, chosen to keep each case to roughly a thousand strings. */
