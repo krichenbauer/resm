@@ -3,12 +3,18 @@ import type { Automaton } from './automaton.ts';
 import { HAND_CORPUS, ORACLE_CORPUS } from './corpus.ts';
 import { determinize } from './determinize.ts';
 import { removeEpsilons } from './epsilon-removal.ts';
+import { complete, minimize } from './minimize.ts';
 import { TEST_STATE_BUDGET, accepts, epsilonNfa, stringsUpTo } from './test-support.ts';
+
+const dfa = (regex: string) => determinize(removeEpsilons(epsilonNfa(regex)), TEST_STATE_BUDGET);
 
 const REPRESENTATIONS: Record<string, (regex: string) => Automaton> = {
   'ε-NFA': epsilonNfa,
   NFA: (regex) => removeEpsilons(epsilonNfa(regex)),
-  DFA: (regex) => determinize(removeEpsilons(epsilonNfa(regex)), TEST_STATE_BUDGET),
+  DFA: dfa,
+  'DFA with sink state': (regex) => complete(dfa(regex)),
+  'minimized DFA': (regex) => minimize(dfa(regex), { keepSink: false }),
+  'minimized DFA with sink state': (regex) => minimize(dfa(regex), { keepSink: true }),
 };
 
 /** Longest test string for an alphabet, chosen to keep each case to roughly a thousand strings. */

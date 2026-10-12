@@ -51,7 +51,7 @@ describe('determinization', () => {
     ]);
   });
 
-  it('has no trap state: characters without a transition reject', () => {
+  it('has no sink state: characters without a transition reject', () => {
     const result = dfa('a');
     expect(result.stateCount).toBe(2);
     expect(describeTransitions(result)).toEqual(["0 -'a'-> 1"]);
