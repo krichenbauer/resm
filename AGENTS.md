@@ -29,7 +29,8 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - Interpret the regex as a **full match** of the input string, not a substring search.
 - Allow `^` only at the beginning and `$` only at the end, as redundant full-match anchors. Elsewhere they are syntax errors unless escaped as literals.
 - Accept the negated predefined classes `\D`, `\W`, and `\S` as the ASCII complements of `\d`, `\w`, and `\s`, both standalone and inside character sets.
-- Accept the lazy quantifiers `*?`, `+?`, and `??`, and treat them as their greedy forms: laziness does not change the recognized language.
+- Accept the lazy quantifiers `*?`, `+?`, `??`, and `{n,m}?`, and treat them as their greedy forms: laziness does not change the recognized language.
+- `.` matches every ASCII character except the line feed (U+000A), as in Python without flags.
 - Reject non-capturing groups (`(?:...)`) and control or hex escapes (`\n`, `\t`, `\xHH`, etc.) with an "unsupported" diagnostic.
 - **No flags** (`i`, `s`, etc.). Do not support non-regular extensions such as backreferences or lookarounds. Diagnose unsupported constructs rather than silently misinterpreting them.
 - An empty regex is **valid**: its diagram is one state, `q0`, which is both initial and accepting. This is also the initial diagram on first launch; do not prefill a sample expression.
