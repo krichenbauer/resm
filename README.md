@@ -240,7 +240,7 @@ Browser tests live in `e2e/` and run in Chromium, Firefox, and WebKit. The tests
 
 The browser tests build the site and serve it from the subpath `/resm/`, the same way GitHub Pages does, so a broken base path fails locally. They also fail if the page requests anything from another host.
 
-On CI, the Chromium and Firefox tests must pass. The WebKit tests are run and reported there as well, but do not block the build for now: the WebKit build that Nix provides closes itself on the Linux machines of GitHub Actions, which is still being investigated. Until then, run the WebKit tests on macOS before a release, with `pnpm test:e2e --project=webkit`.
+On CI, the Chromium and Firefox tests must pass. The WebKit tests are run and reported there as well, but do not block the build for now. WebKit needs a graphics driver even when it runs without a window, and the WebKit build from Nix finds none on Linux distributions other than NixOS, such as the machines of GitHub Actions. The flake therefore points it to Mesa's software renderer there. Until that is confirmed to work on CI, run the WebKit tests on macOS or NixOS before a release, with `pnpm test:e2e --project=webkit`.
 
 On Linux, every browser launch prints "Skipping host requirements validation logic because `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS` env variable is set." The flake sets that variable on purpose, because the browsers from Nix bring their own libraries; the message is not an error.
 

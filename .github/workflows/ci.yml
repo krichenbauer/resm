@@ -36,8 +36,9 @@ jobs:
         run: pnpm build
       - name: End-to-end tests (Chromium, Firefox)
         run: pnpm test:e2e --project=chromium --project=firefox
-      # WebKit from Nix closes itself on this runner as soon as a page is
-      # opened, for a reason that is not understood yet. Until it is, its
+      # WebKit from Nix found no graphics driver on this runner and closed
+      # itself as soon as a page was opened. The flake now points it to
+      # Mesa's software renderer. Until that is confirmed here, the WebKit
       # tests are reported but do not decide whether the build passes. The
       # first of the two steps logs what the browser itself says.
       - name: WebKit diagnostics (informational)
