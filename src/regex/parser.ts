@@ -17,16 +17,19 @@ interface Bounds {
 /** One member of a character set; `char` is `null` for a class such as `\d`. */
 interface SetItem {
   readonly set: CharSet;
+  /** The characters that the item names; for a negated class, those it excludes. */
+  readonly named: CharSet;
   readonly char: string | null;
 }
 
-const CLASS_ESCAPES: ReadonlyMap<string, CharSet> = new Map([
-  ['d', DIGIT],
-  ['w', WORD],
-  ['s', SPACE],
-  ['D', DIGIT.complement()],
-  ['W', WORD.complement()],
-  ['S', SPACE.complement()],
+/** The class escapes with the set they match and the class they name. */
+const CLASS_ESCAPES: ReadonlyMap<string, { readonly set: CharSet; readonly named: CharSet }> = new Map([
+  ['d', { set: DIGIT, named: DIGIT }],
+  ['w', { set: WORD, named: WORD }],
+  ['s', { set: SPACE, named: SPACE }],
+  ['D', { set: DIGIT.complement(), named: DIGIT }],
+  ['W', { set: WORD.complement(), named: WORD }],
+  ['S', { set: SPACE.complement(), named: SPACE }],
 ]);
 
 /** A problem in the regex source, with the location it refers to. */
@@ -210,10 +213,10 @@ class Parser {
         return this.parseSet();
       case '.':
         this.pos++;
-        return { type: 'chars', set: ANY_CHAR, range: { start, end: this.pos } };
+        return { type: 'chars', set: ANY_CHAR, named: CharSet.EMPTY, range: { start, end: this.pos } };
       case '\\': {
-        const { set } = this.parseEscape(false);
-        return { type: 'chars', set, range: { start, end: this.pos } };
+        const { set, named } = this.parseEscape(false);
+        return { type: 'chars', set, named, range: { start, end: this.pos } };
       }
       case '*':
       case '+':
@@ -233,7 +236,7 @@ class Parser {
         this.fail("'$' is only allowed at the very end of the expression. Write '\\$' for a literal dollar sign.");
     }
     const set = CharSet.of(this.takeAscii());
-    return { type: 'chars', set, range: { start, end: this.pos } };
+    return { type: 'chars', set, named: set, range: { start, end: this.pos } };
   }
 
   private parseGroup(): RegexNode {
@@ -286,6 +289,7 @@ class Parser {
     if (negated) this.pos++;
     const firstItem = this.pos;
     let set = CharSet.EMPTY;
+    let named = CharSet.EMPTY;
     for (;;) {
       const char = this.peek();
       if (char === undefined) {
@@ -310,6 +314,7 @@ class Parser {
       const afterHyphen = this.source[this.pos + 1];
       if (this.peek() !== '-' || afterHyphen === undefined || afterHyphen === ']') {
         set = set.union(first.set);
+        named = named.union(first.named);
         continue;
       }
       this.pos++;
@@ -327,10 +332,17 @@ class Parser {
           range,
         );
       }
-      set = set.union(CharSet.range(first.char, last.char));
+      const members = CharSet.range(first.char, last.char);
+      set = set.union(members);
+      named = named.union(members);
     }
     this.pos++;
-    return { type: 'chars', set: negated ? set.complement() : set, range: { start: open, end: this.pos } };
+    return {
+      type: 'chars',
+      set: negated ? set.complement() : set,
+      named,
+      range: { start: open, end: this.pos },
+    };
   }
 
   private parseSetItem(): SetItem {
@@ -341,7 +353,8 @@ class Parser {
       );
     }
     const char = this.takeAscii();
-    return { set: CharSet.of(char), char };
+    const set = CharSet.of(char);
+    return { set, named: set, char };
   }
 
   /** Parses a backslash escape: a predefined class or an escaped punctuation character. */
@@ -355,10 +368,10 @@ class Parser {
         { start, end: start + 1 },
       );
     }
-    const classSet = CLASS_ESCAPES.get(char);
-    if (classSet) {
+    const charClass = CLASS_ESCAPES.get(char);
+    if (charClass) {
       this.pos++;
-      return { set: classSet, char: null };
+      return { ...charClass, char: null };
     }
     if (isAsciiLetter(char) || isAsciiDigit(char)) {
       this.fail(`The escape '\\${char}' is not supported${unsupportedEscapeReason(char, inSet)}`, {
@@ -367,7 +380,8 @@ class Parser {
       });
     }
     const literal = this.takeAscii();
-    return { set: CharSet.of(literal), char: literal };
+    const set = CharSet.of(literal);
+    return { set, named: set, char: literal };
   }
 
   /** Whether the next character is the `$` that closes the whole expression. */

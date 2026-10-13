@@ -16,6 +16,12 @@ export interface EmptyNode {
 export interface CharsNode {
   readonly type: 'chars';
   readonly set: CharSet;
+  /**
+   * The characters that the source names here: `a` in both `a` and `[^a]`,
+   * the digits in both `\d` and `\D`, and none in `.`. They make up the
+   * alphabet of a regex when it is not all of ASCII.
+   */
+  readonly named: CharSet;
   readonly range: SourceRange;
 }
 
