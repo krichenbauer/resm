@@ -148,10 +148,18 @@ export class ResmApp extends LitElement {
 
     /* A menu is placed below its button when it opens; see "onMenuToggle". */
     [popover] {
+      /*
+       * Browsers center a popover by stretching it over the window and
+       * limiting its size to its content. Not every Safari honors that limit
+       * for the height, so the menu states its position and size itself.
+       */
+      position: fixed;
       inset: auto;
       margin: 0;
       padding: 0.75rem;
       width: min(${MENU_WIDTH_REM}rem, calc(100vw - ${MENU_MARGIN_REM}rem));
+      height: auto;
+      overflow: auto;
       box-sizing: border-box;
       border: 1px solid var(--resm-border);
       border-radius: 0.5rem;
@@ -331,8 +339,13 @@ export class ResmApp extends LitElement {
     const width = Math.min(MENU_WIDTH_REM * rem, window.innerWidth - MENU_MARGIN_REM * rem);
     const margin = (MENU_MARGIN_REM * rem) / 2;
     const right = Math.min(window.innerWidth - box.right, window.innerWidth - margin - width);
-    menu.style.top = `${box.bottom + 4}px`;
+    const top = box.bottom + 4;
+    menu.style.top = `${top}px`;
     menu.style.right = `${Math.max(margin, right)}px`;
+    // Only the top and the right edge are fixed; the others follow from the content.
+    menu.style.bottom = 'auto';
+    menu.style.left = 'auto';
+    menu.style.maxHeight = `${Math.max(0, window.innerHeight - top - margin)}px`;
   }
 
   /** The colors that are currently on screen. */

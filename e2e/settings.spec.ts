@@ -137,3 +137,36 @@ test('opens each menu below its button and inside the window, also on a phone', 
     await page.keyboard.press('Escape');
   }
 });
+
+test('makes each menu only as tall as its content', async ({ page }) => {
+  for (const name of ['Export', 'Settings']) {
+    await page.getByRole('button', { name }).click();
+    const menu = page.locator('[popover]:popover-open');
+    const size = await menu.evaluate((element) => {
+      const children = [...element.children].map((child) => child.getBoundingClientRect());
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        content: Math.max(...children.map((box) => box.bottom)) - Math.min(...children.map((box) => box.top)),
+        padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom),
+        border: parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth),
+        // The size must not depend on how a browser resolves a stretched box.
+        declared: [style.position, element.style.bottom, element.style.left],
+      };
+    });
+    expect(size.height).toBeCloseTo(size.content + size.padding + size.border, 0);
+    expect(size.height).toBeLessThan(260);
+    expect(size.declared).toEqual(['fixed', 'auto', 'auto']);
+    await page.keyboard.press('Escape');
+  }
+});
+
+test('lets a menu scroll when the window is too low for it', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 150 });
+  await page.getByRole('button', { name: 'Settings' }).click();
+  const menu = page.locator('[popover]:popover-open');
+  const box = await menu.boundingBox();
+  if (!box) throw new Error('menu is not rendered');
+  expect(box.y + box.height).toBeLessThanOrEqual(150);
+  expect(await menu.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+});
