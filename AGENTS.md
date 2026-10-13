@@ -9,7 +9,7 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - **Runtime/privacy:** Everything runs locally in the browser after the site loads. No backend, external API calls, CDNs, third-party assets, analytics, telemetry, or remotely loaded fonts. Bundle dependencies and serve all application assets from the same GitHub Pages host.
 - **Dependencies:** Prefer established, maintained libraries over custom implementations when they genuinely reduce complexity. Vet license compatibility with **GPL-3.0-or-later**; keep required notices. Do not add dependencies gratuitously.
 - **Platform:** Initial hosting is GitHub Pages. Local development must work on **NixOS and macOS** using the repository's Nix flake. Do not introduce OS-specific assumptions.
-- **Documentation:** Keep `README.md` accurate with every relevant change. It must explain the supported regex syntax, limitations, all features and settings, development and test workflows, and deployment. Include tested examples of the documented regex syntax.
+- **Documentation:** Keep `README.md` accurate with every relevant change. It is for people who use RESM: it must explain usage, the supported regex syntax (early on), limitations, all features and settings, and the licenses of RESM and of everything it contains, in full. Include tested examples of the documented regex syntax. Development and test workflows and deployment are documented in `docs/development.md`, which the README links to.
 - **Scope:** Implement only agreed MVP behavior. Record future ideas separately; do not silently turn them into features.
 
 ## Agreed technology
