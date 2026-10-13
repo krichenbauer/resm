@@ -1,8 +1,9 @@
+import { isAlphabetMode } from './alphabet-mode.ts';
 import { isRepresentation } from './representation.ts';
 import { type Settings, clampStateLimit } from './settings.ts';
 
 /** The settings that determine which diagram is drawn. The theme is left to the viewer. */
-export type SharedSettings = Pick<Settings, 'representation' | 'showSink' | 'stateLimit'>;
+export type SharedSettings = Pick<Settings, 'representation' | 'alphabet' | 'showSink' | 'stateLimit'>;
 
 /** What a share link carries. Settings that the link does not mention are absent. */
 export interface SharedState {
@@ -19,6 +20,7 @@ export function encodeShare({ regex, settings }: { regex: string; settings: Sett
   return new URLSearchParams({
     regex,
     automaton: settings.representation,
+    alphabet: settings.alphabet,
     sink: settings.showSink ? '1' : '0',
     limit: String(settings.stateLimit),
   }).toString();
@@ -31,12 +33,14 @@ export function decodeShare(fragment: string): SharedState | null {
   if (regex === null) return null;
 
   const automaton = parameters.get('automaton');
+  const alphabet = parameters.get('alphabet');
   const sink = parameters.get('sink');
   const limit = parameters.get('limit');
   return {
     regex,
     settings: {
       ...(automaton !== null && isRepresentation(automaton) ? { representation: automaton } : {}),
+      ...(isAlphabetMode(alphabet) ? { alphabet } : {}),
       ...(sink === '1' || sink === '0' ? { showSink: sink === '1' } : {}),
       ...(limit !== null && /^-?\d+$/.test(limit) ? { stateLimit: clampStateLimit(Number(limit)) } : {}),
     },

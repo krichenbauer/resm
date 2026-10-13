@@ -111,3 +111,16 @@ export function sendGesture(
     { type, ...gesture },
   );
 }
+
+export const alphabetOption = (page: Page) => page.getByRole('combobox', { name: 'Alphabet' });
+/** The caption in the corner of the canvas that names the alphabet. */
+export const alphabetCaption = (page: Page) => page.locator('resm-diagram .alphabet');
+/** The remark below the regex field on something that is not an error. */
+export const notice = (page: Page) => page.locator('resm-app .notice');
+
+/** Switches to the alphabet of all ASCII characters and closes the settings again. */
+export async function useAsciiAlphabet(page: Page): Promise<void> {
+  await settingsButton(page).click();
+  await alphabetOption(page).selectOption('ASCII');
+  await page.keyboard.press('Escape');
+}

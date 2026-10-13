@@ -6,7 +6,7 @@ import { layoutDiagram } from './layout.ts';
 import { INITIAL_ARROW_LENGTH, buildScene } from './scene.ts';
 
 function sceneOf(regex: string, representation: Representation = 'dfa') {
-  const result = buildDiagram({ regex, representation, showSink: false, stateLimit: DEFAULT_STATE_LIMIT });
+  const result = buildDiagram({ regex, representation, showSink: false, stateLimit: DEFAULT_STATE_LIMIT, alphabet: 'ascii' });
   if (!result.ok) throw new Error(result.error.message);
   const layout = layoutDiagram(result.diagram);
   return buildScene(result.diagram, layout.positions, layout.shapes);

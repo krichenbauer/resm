@@ -8,7 +8,7 @@ import { layoutDiagram } from './layout.ts';
 import { buildScene } from './scene.ts';
 
 function diagramOf(regex: string, representation: Representation = 'dfa', showSink = false): Diagram {
-  const result = buildDiagram({ regex, representation, showSink, stateLimit: DEFAULT_STATE_LIMIT });
+  const result = buildDiagram({ regex, representation, showSink, stateLimit: DEFAULT_STATE_LIMIT, alphabet: 'ascii' });
   if (!result.ok) throw new Error(result.error.message);
   return result.diagram;
 }
@@ -165,7 +165,7 @@ describe('layout', () => {
 
 describe('layout of large diagrams', () => {
   const timed = (regex: string, representation: Representation, showSink: boolean, stateLimit = DEFAULT_STATE_LIMIT) => {
-    const result = buildDiagram({ regex, representation, showSink, stateLimit });
+    const result = buildDiagram({ regex, representation, showSink, stateLimit, alphabet: 'ascii' });
     if (!result.ok) throw new Error(result.error.message);
     const started = performance.now();
     const layout = layoutDiagram(result.diagram);

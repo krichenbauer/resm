@@ -1,5 +1,14 @@
 import { type Page, expect, test } from '@playwright/test';
-import { diagramArea, edges, error, regexField, representation, settled, states } from './support.ts';
+import {
+  diagramArea,
+  edges,
+  error,
+  regexField,
+  representation,
+  settled,
+  states,
+  useAsciiAlphabet,
+} from './support.ts';
 
 /** Edge labels by the names of their states, such as `q0-q1: a`. */
 async function edgeLabels(page: Page): Promise<string[]> {
@@ -75,13 +84,15 @@ test('switches between the four representations', async ({ page }) => {
 
   await representation(page).selectOption('Minimized DFA');
   await expect(states(page)).toHaveCount(2);
-  expect(await edgeLabels(page)).toEqual(['q0-q1: [ab]']);
+  // The edge stands for the whole alphabet of the regex, which is short enough to be listed.
+  expect(await edgeLabels(page)).toEqual(['q0-q1: a, b']);
 
   await representation(page).selectOption('DFA');
   await expect(states(page)).toHaveCount(3);
 });
 
 test('labels edges with exact character sets', async ({ page }) => {
+  await useAsciiAlphabet(page);
   await representation(page).selectOption('Minimized DFA');
   await regexField(page).fill('\\d+|[^"]');
   await expect(states(page)).toHaveCount(3);

@@ -45,6 +45,7 @@ const request = (regex: string): DiagramRequest => ({
   representation: 'dfa',
   showSink: false,
   stateLimit: DEFAULT_STATE_LIMIT,
+  alphabet: 'ascii',
 });
 
 function setup() {

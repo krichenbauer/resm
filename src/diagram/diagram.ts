@@ -97,8 +97,12 @@ function stateKeys(
   });
 }
 
-/** Derives the diagram of an automaton: canonical state names and one labeled edge per pair of states. */
-export function toDiagram(automaton: Automaton): Diagram {
+/**
+ * Derives the diagram of an automaton: canonical state names and one labeled
+ * edge per pair of states. The labels are relative to the alphabet; see
+ * `formatLabel`.
+ */
+export function toDiagram(automaton: Automaton, alphabet: CharSet = CharSet.ALL): Diagram {
   const outgoing: Transition[][] = Array.from({ length: automaton.stateCount }, () => []);
   for (const transition of automaton.transitions) outgoing[transition.from]?.push(transition);
 
@@ -115,7 +119,7 @@ export function toDiagram(automaton: Automaton): Diagram {
     return [...byTarget]
       .sort(([a], [b]) => a - b)
       .map(([to, { epsilon, set }]) => {
-        const parts = [...(epsilon ? ['ε'] : []), ...(set.isEmpty ? [] : [formatLabel(set)])];
+        const parts = [...(epsilon ? ['ε'] : []), ...(set.isEmpty ? [] : [formatLabel(set, alphabet)])];
         return { from, to, label: parts.join(', ') };
       });
   });

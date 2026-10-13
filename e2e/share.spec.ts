@@ -31,7 +31,7 @@ test('copies a link with the regex and the settings, not with the diagram', asyn
 
   await shareButton(page).click();
   await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible();
-  expect(await clipboard(page)).toBe(`${baseURL}#regex=%28a%7Cb%29*abb&automaton=min-dfa&sink=0&limit=200`);
+  expect(await clipboard(page)).toBe(`${baseURL}#regex=%28a%7Cb%29*abb&automaton=min-dfa&alphabet=derived&sink=0&limit=200`);
   await expect(shareButton(page)).toBeVisible({ timeout: 10_000 });
 });
 

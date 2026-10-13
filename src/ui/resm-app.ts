@@ -5,6 +5,7 @@ import type { DiagramError, DiagramRequest } from '../diagram/pipeline.ts';
 import { download, rasterize } from '../export/download.ts';
 import { exportSize, pngSize, renderSvg } from '../export/svg.ts';
 import { buildScene } from '../layout/scene.ts';
+import { ALPHABET_MODES, isAlphabetMode } from '../settings/alphabet-mode.ts';
 import { REPRESENTATIONS, isRepresentation } from '../settings/representation.ts';
 import {
   DEFAULT_SETTINGS,
@@ -142,7 +143,13 @@ export class ResmApp extends LitElement {
       font-size: 0.875rem;
     }
 
-    .error:not(:empty) {
+    .notice {
+      margin: 0;
+      font-size: 0.875rem;
+      opacity: 0.85;
+    }
+
+    :is(.error, .notice):not(:empty) {
       margin-top: 0.375rem;
     }
 
@@ -196,6 +203,8 @@ export class ResmApp extends LitElement {
   /** The last diagram that could be computed. It stays visible while the input is invalid. */
   @state() private shown?: DiagramUpdate;
   @state() private error?: DiagramError;
+  /** A remark on the regex that is shown, which is not an error. */
+  @state() private notice = '';
   @state() private pngWidth = DEFAULT_PNG_WIDTH;
   @state() private linkCopied = false;
 
@@ -251,13 +260,14 @@ export class ResmApp extends LitElement {
   }
 
   private requestDiagram(): void {
-    const { representation, showSink, stateLimit } = this.settings;
-    this.client?.request({ regex: this.regex, representation, showSink, stateLimit });
+    const { representation, alphabet, showSink, stateLimit } = this.settings;
+    this.client?.request({ regex: this.regex, representation, alphabet, showSink, stateLimit });
   }
 
   private show(result: ComputeResult, request: DiagramRequest): void {
     if (!result.ok) {
       this.error = result.error;
+      this.notice = '';
       return;
     }
     this.shown = {
@@ -265,19 +275,22 @@ export class ResmApp extends LitElement {
       layout: result.layout,
       // An edited regex moves the diagram into its new shape; another representation replaces it.
       animate: request.representation === this.shownRepresentation,
-      description: describeDiagram(result.diagram, request.representation),
+      alphabet: result.alphabet,
+      description: describeDiagram(result.diagram, request.representation, result.alphabet),
     };
     this.shownRepresentation = request.representation;
     this.error = undefined;
+    this.notice = result.notice ?? '';
   }
 
   private changeSettings(changes: Partial<Settings>): void {
     const previous = this.settings;
     this.settings = { ...previous, ...changes };
     this.remember();
-    const { representation, showSink, stateLimit } = this.settings;
+    const { representation, alphabet, showSink, stateLimit } = this.settings;
     const sameDiagram =
       representation === previous.representation &&
+      alphabet === previous.alphabet &&
       showSink === previous.showSink &&
       stateLimit === previous.stateLimit;
     if (!sameDiagram) this.requestDiagram();
@@ -292,6 +305,11 @@ export class ResmApp extends LitElement {
   private onRepresentationChange(event: Event): void {
     const { value } = event.target as HTMLSelectElement;
     if (isRepresentation(value)) this.changeSettings({ representation: value });
+  }
+
+  private onAlphabetChange(event: Event): void {
+    const { value } = event.target as HTMLSelectElement;
+    if (isAlphabetMode(value)) this.changeSettings({ alphabet: value });
   }
 
   private onSinkChange(event: Event): void {
@@ -354,25 +372,30 @@ export class ResmApp extends LitElement {
     return theme === 'dark' || (theme === 'system' && this.prefersDark.matches) ? DARK : LIGHT;
   }
 
-  /** The diagram as it is once it has settled, whatever is in motion or on screen right now. */
-  private exportScene() {
+  /**
+   * The diagram as an SVG document: as it is once it has settled, whatever is
+   * in motion or on screen right now. With `pngWidth`, the document asks to
+   * be drawn at the size of a PNG of that width.
+   */
+  private exportSvg(pngWidth?: number) {
     if (!this.shown) return undefined;
-    const { diagram, layout } = this.shown;
-    return buildScene(diagram, layout.positions, layout.shapes);
+    const { diagram, layout, alphabet } = this.shown;
+    const scene = buildScene(diagram, layout.positions, layout.shapes);
+    const natural = exportSize(scene.bounds, alphabet);
+    const size = pngWidth === undefined ? natural : pngSize(natural, pngWidth);
+    return { text: renderSvg(scene, this.palette(), alphabet, size), size };
   }
 
   private downloadSvg(): void {
-    const scene = this.exportScene();
-    if (!scene) return;
-    download(new Blob([renderSvg(scene, this.palette())], { type: 'image/svg+xml' }), 'resm-diagram.svg');
+    const svg = this.exportSvg();
+    if (svg) download(new Blob([svg.text], { type: 'image/svg+xml' }), 'resm-diagram.svg');
   }
 
   private async downloadPng(): Promise<void> {
-    const scene = this.exportScene();
-    if (!scene) return;
-    const size = pngSize(exportSize(scene.bounds), this.pngWidth);
+    const svg = this.exportSvg(this.pngWidth);
+    if (!svg) return;
     try {
-      download(await rasterize(renderSvg(scene, this.palette(), size), size), 'resm-diagram.png');
+      download(await rasterize(svg.text, svg.size), 'resm-diagram.png');
     } catch {
       this.error = { kind: 'internal', message: 'The PNG image could not be created.' };
     }
@@ -399,7 +422,7 @@ export class ResmApp extends LitElement {
   }
 
   protected override render() {
-    const { representation, showSink, stateLimit, theme } = this.settings;
+    const { representation, alphabet, showSink, stateLimit, theme } = this.settings;
     return html`
       <header>
         <div class="controls">
@@ -409,7 +432,7 @@ export class ResmApp extends LitElement {
             type="text"
             aria-label="Regular expression"
             aria-invalid=${this.error?.kind === 'syntax' ? 'true' : 'false'}
-            aria-describedby="error"
+            aria-describedby="error notice"
             placeholder="Regular expression"
             autocomplete="off"
             autocapitalize="off"
@@ -428,6 +451,7 @@ export class ResmApp extends LitElement {
           <button type="button" popovertarget="settings-menu">Settings</button>
         </div>
         <p class="error" id="error" role="status">${this.errorText()}</p>
+        <p class="notice" id="notice" aria-live="polite">${this.notice}</p>
 
         <div id="export-menu" popover @beforetoggle=${this.onMenuToggle}>
           <button type="button" @click=${this.downloadSvg}>Download SVG</button>
@@ -447,6 +471,18 @@ export class ResmApp extends LitElement {
         </div>
 
         <div id="settings-menu" popover @beforetoggle=${this.onMenuToggle}>
+          <label class="option">
+            Alphabet
+            <select @change=${this.onAlphabetChange}>
+              ${ALPHABET_MODES.map(
+                ({ id, label }) => html`<option value=${id} .selected=${id === alphabet}>${label}</option>`,
+              )}
+            </select>
+          </label>
+          <p class="hint">
+            From the regex: only the characters that are written in it. The dot and negations such as [^a]
+            then stand for the other characters of the regex.
+          </p>
           <label class="option">
             <input type="checkbox" .checked=${showSink} @change=${this.onSinkChange} />
             Show sink state

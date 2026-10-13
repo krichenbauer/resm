@@ -3,7 +3,7 @@ import { DEFAULT_STATE_LIMIT } from '../diagram/pipeline.ts';
 import { computeDiagram } from './compute.ts';
 
 const request = (regex: string) =>
-  ({ regex, representation: 'dfa', showSink: false, stateLimit: DEFAULT_STATE_LIMIT }) as const;
+  ({ regex, representation: 'dfa', showSink: false, stateLimit: DEFAULT_STATE_LIMIT, alphabet: 'ascii' }) as const;
 
 describe('diagram computation', () => {
   it('returns the diagram together with its layout', () => {

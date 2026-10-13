@@ -60,10 +60,13 @@ describe('initial state', () => {
   });
 
   it('takes the regex and the settings of a share link over the stored ones', () => {
-    const shared = { regex: 'shared', settings: { representation: 'min-dfa', showSink: true, stateLimit: 50 } } as const;
+    const shared = {
+      regex: 'shared',
+      settings: { representation: 'min-dfa', alphabet: 'ascii', showSink: true, stateLimit: 50 },
+    } as const;
     expect(initialState(stored, shared)).toEqual({
       regex: 'shared',
-      settings: { representation: 'min-dfa', showSink: true, stateLimit: 50, theme: 'dark' },
+      settings: { representation: 'min-dfa', alphabet: 'ascii', showSink: true, stateLimit: 50, theme: 'dark' },
     });
   });
 

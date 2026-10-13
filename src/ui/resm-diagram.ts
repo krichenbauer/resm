@@ -51,6 +51,8 @@ export interface DiagramUpdate {
   readonly diagram: Diagram;
   readonly layout: DiagramLayout;
   readonly animate: boolean;
+  /** The alphabet of the automaton, such as `Σ = {a, b}`, shown in a corner of the canvas. */
+  readonly alphabet: string;
   /** The diagram in words, for readers who cannot see it. */
   readonly description: string;
 }
@@ -108,6 +110,7 @@ export class ResmDiagram extends LitElement {
      * not. The background makes the whole canvas count.
      */
     .canvas {
+      position: relative;
       width: 100%;
       height: 100%;
       background: var(--resm-surface);
@@ -124,6 +127,21 @@ export class ResmDiagram extends LitElement {
       display: block;
       width: 100%;
       height: 100%;
+    }
+
+    /* The alphabet stays in its corner whatever the view shows, and lets gestures through. */
+    .alphabet {
+      position: absolute;
+      left: 0.625rem;
+      bottom: 0.5rem;
+      max-width: calc(100% - 1.25rem);
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--resm-text);
+      font: ${LABEL_FONT_SIZE}px ${unsafeCSS(LABEL_FONT_FAMILY)};
+      pointer-events: none;
     }
 
     svg:focus-visible {
@@ -487,6 +505,7 @@ export class ResmDiagram extends LitElement {
           ${repeat(scene?.edges ?? [], (edge) => edge.key, renderEdge)}
           ${repeat(scene?.states ?? [], (state) => state.key, renderState)}
         </svg>
+        <p class="alphabet">${this.shown?.alphabet}</p>
       </div>
     `;
   }

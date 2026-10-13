@@ -1,4 +1,4 @@
-import { STATE_RADIUS } from '../layout/geometry.ts';
+import { STATE_RADIUS, estimateLabelWidth } from '../layout/geometry.ts';
 import { type Bounds, INITIAL_ARROW_LENGTH, type Scene } from '../layout/scene.ts';
 import {
   ACCEPTING_GAP,
@@ -19,6 +19,9 @@ import type { Palette } from '../theme/palette.ts';
 /** Free space around the diagram in an exported image, in diagram units. */
 export const EXPORT_PADDING = 16;
 
+/** Height of the line below the diagram that names the alphabet. */
+export const CAPTION_HEIGHT = 24;
+
 /** Longest side of an exported PNG in pixels. Larger canvases fail in some browsers. */
 export const MAX_PNG_SIDE = 8192;
 
@@ -27,11 +30,15 @@ export interface Size {
   readonly height: number;
 }
 
-/** The natural size of the exported image: the whole diagram with padding. */
-export function exportSize(bounds: Bounds): Size {
+/**
+ * The natural size of the exported image: the whole diagram with padding, and
+ * below it a line for the caption that names the alphabet.
+ */
+export function exportSize(bounds: Bounds, caption: string): Size {
+  const width = Math.max(bounds.maxX - bounds.minX, estimateLabelWidth(caption));
   return {
-    width: Math.ceil(bounds.maxX - bounds.minX + 2 * EXPORT_PADDING),
-    height: Math.ceil(bounds.maxY - bounds.minY + 2 * EXPORT_PADDING),
+    width: Math.ceil(width + 2 * EXPORT_PADDING),
+    height: Math.ceil(bounds.maxY - bounds.minY + 2 * EXPORT_PADDING + CAPTION_HEIGHT),
   };
 }
 
@@ -54,11 +61,18 @@ function escapeXml(text: string): string {
 /**
  * Draws a scene as a standalone SVG document. It shows the whole diagram,
  * whatever part of it is visible on screen, and carries its own colors and
- * fonts instead of referring to the page. `size` is the size at which the
- * document asks to be displayed; by default the natural size of the diagram.
+ * fonts instead of referring to the page. The caption names the alphabet,
+ * without which labels such as `Σ` or `[^a]` could not be read. `size` is the
+ * size at which the document asks to be displayed; by default the natural
+ * size of the diagram.
  */
-export function renderSvg(scene: Scene, palette: Palette, size: Size = exportSize(scene.bounds)): string {
-  const { width, height } = exportSize(scene.bounds);
+export function renderSvg(
+  scene: Scene,
+  palette: Palette,
+  caption: string,
+  size: Size = exportSize(scene.bounds, caption),
+): string {
+  const { width, height } = exportSize(scene.bounds, caption);
   const x = scene.bounds.minX - EXPORT_PADDING;
   const y = scene.bounds.minY - EXPORT_PADDING;
   const arrow = 'marker-end="url(#resm-arrowhead)"';
@@ -93,6 +107,7 @@ export function renderSvg(scene: Scene, palette: Palette, size: Size = exportSiz
     `<g fill="none" stroke="${palette.line}" stroke-width="${LINE_WIDTH}">${paths.join('')}</g>`,
     `<g font-family="${LABEL_FONT_FAMILY}" font-size="${LABEL_FONT_SIZE}" text-anchor="middle" dominant-baseline="central" fill="${palette.text}" stroke="${palette.surface}" stroke-width="${LABEL_HALO_WIDTH}" stroke-linejoin="round" paint-order="stroke">${labels.join('')}</g>`,
     `<g font-family="${NAME_FONT_FAMILY}" font-size="${NAME_FONT_SIZE}" text-anchor="middle" dominant-baseline="central" fill="${palette.state}" stroke="${palette.line}" stroke-width="${LINE_WIDTH}">${states.join('')}</g>`,
+    `<text x="${scene.bounds.minX}" y="${scene.bounds.maxY + EXPORT_PADDING + CAPTION_HEIGHT / 2}" text-anchor="start" dominant-baseline="central" font-family="${LABEL_FONT_FAMILY}" font-size="${LABEL_FONT_SIZE}" fill="${palette.text}">${escapeXml(caption)}</text>`,
     '</svg>',
   ].join('');
 }

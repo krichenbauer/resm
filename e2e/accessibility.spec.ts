@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
 test('describes the diagram in words', async ({ page }) => {
   await showRegex(page, 'ab', 3);
   await expect(diagramArea(page)).toHaveAccessibleDescription(
-    'DFA with 3 states and 2 transitions. Initial state: q0. Accepting state: q2. ' +
+    'DFA with 3 states and 2 transitions. Alphabet: {a, b}. Initial state: q0. Accepting state: q2. ' +
       'Transitions: q0 to q1 on a; q1 to q2 on b.',
   );
   await representation(page).selectOption('Minimized DFA');
@@ -46,6 +46,8 @@ test('opens a menu with the keyboard and returns the focus when it closes', asyn
   await settingsButton(page).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('checkbox', { name: 'Show sink state' })).toBeVisible();
+  await page.keyboard.press(tabKey(browserName));
+  await expect(page.getByRole('combobox', { name: 'Alphabet' })).toBeFocused();
   await page.keyboard.press(tabKey(browserName));
   await expect(page.getByRole('checkbox', { name: 'Show sink state' })).toBeFocused();
   await page.keyboard.press('Space');

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+  alphabetOption,
   edges,
   error,
   regexField,
@@ -28,6 +29,7 @@ test('keeps the settings in a menu that opens on demand', async ({ page }) => {
   await expect(sinkOption(page)).toBeVisible();
   await expect(sinkOption(page)).not.toBeChecked();
   await expect(stateLimitOption(page)).toHaveValue('200');
+  await expect(alphabetOption(page)).toHaveValue('derived');
   await expect(themeOption(page)).toHaveValue('system');
 
   await page.keyboard.press('Escape');
@@ -42,7 +44,7 @@ test('shows the sink state of a DFA on request and names it last', async ({ page
   await expect(states(page)).toHaveText(['q0', 'q1', 'q2', 'q3']);
   await expect(state(page, 'q3')).not.toHaveAttribute('data-accepting', '');
   await expect(edges(page)).toHaveCount(6);
-  await expect(page.locator('[data-edge="q3-q3"]')).toHaveText('[\\x00-\\x7f]');
+  await expect(page.locator('[data-edge="q3-q3"]')).toHaveText('a, b');
 
   await sinkOption(page).uncheck();
   await expect(states(page)).toHaveText(['q0', 'q1', 'q2']);
@@ -99,6 +101,7 @@ test('remembers the regex and all settings for the next visit', async ({ page })
   await stateLimitOption(page).fill('50');
   await stateLimitOption(page).press('Enter');
   await themeOption(page).selectOption('Dark');
+  await alphabetOption(page).selectOption('ASCII');
   await expect(states(page)).toHaveCount(3);
 
   await page.reload();
@@ -110,6 +113,7 @@ test('remembers the regex and all settings for the next visit', async ({ page })
   await expect(sinkOption(page)).toBeChecked();
   await expect(stateLimitOption(page)).toHaveValue('50');
   await expect(themeOption(page)).toHaveValue('dark');
+  await expect(alphabetOption(page)).toHaveValue('ascii');
 });
 
 test('stores nothing but the regex and the settings, under a single key', async ({ page }) => {
@@ -118,7 +122,7 @@ test('stores nothing but the regex and the settings, under a single key', async 
   expect(Object.keys(stored)).toEqual(['resm']);
   expect(JSON.parse(stored.resm ?? '')).toEqual({
     regex: 'ab',
-    settings: { representation: 'dfa', showSink: false, stateLimit: 200, theme: 'system' },
+    settings: { representation: 'dfa', alphabet: 'derived', showSink: false, stateLimit: 200, theme: 'system' },
   });
 });
 
@@ -155,7 +159,7 @@ test('makes each menu only as tall as its content', async ({ page }) => {
       };
     });
     expect(size.height).toBeCloseTo(size.content + size.padding + size.border, 0);
-    expect(size.height).toBeLessThan(260);
+    expect(size.height).toBeLessThan(360);
     expect(size.declared).toEqual(['fixed', 'auto', 'auto']);
     await page.keyboard.press('Escape');
   }

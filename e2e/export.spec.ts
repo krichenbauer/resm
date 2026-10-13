@@ -54,7 +54,9 @@ test('exports the complete diagram as an SVG file', async ({ page }) => {
   const svg = await inspectSvg(page, file.content.toString('utf8'));
   expect(svg.wellFormed).toBe(true);
   expect(svg.texts.filter((text) => text?.startsWith('q'))).toEqual(['q0', 'q1', 'q2', 'q3']);
-  expect(svg.texts.filter((text) => !text?.startsWith('q')).sort()).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b']);
+  expect(svg.texts.filter((text) => text?.length === 1).sort()).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b']);
+  // The alphabet is named in the image, because labels can refer to it.
+  expect(svg.texts.at(-1)).toBe('Σ = {a, b}');
   // Four states, the second outline of the accepting state, and the dot of the initial arrow.
   expect(svg.circles).toBe(6);
   expect(svg.width).toBe(svg.viewBox[2]);

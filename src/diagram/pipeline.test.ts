@@ -6,6 +6,7 @@ const request = (regex: string, overrides: Partial<DiagramRequest> = {}): Diagra
   representation: 'dfa',
   showSink: false,
   stateLimit: DEFAULT_STATE_LIMIT,
+  alphabet: 'ascii',
   ...overrides,
 });
 
@@ -38,6 +39,8 @@ describe('diagram pipeline', () => {
     expect(result).toEqual({
       ok: true,
       diagram: { states: [{ name: 'q0', key: '', initial: true, accepting: true }], edges: [] },
+      alphabet: 'Σ = ASCII',
+      notice: null,
     });
   });
 
@@ -112,5 +115,93 @@ describe('diagram pipeline', () => {
     expect(workStateLimit(200)).toBe(2000);
     expect(workStateLimit(1000)).toBe(4000);
     expect(workStateLimit(5)).toBe(2000);
+  });
+});
+
+describe('diagram over the alphabet derived from the regex', () => {
+  const derived = (regex: string, overrides: Partial<DiagramRequest> = {}) => {
+    const result = buildDiagram(request(regex, { alphabet: 'derived', ...overrides }));
+    if (!result.ok) throw new Error(result.error.message);
+    const name = (index: number) => result.diagram.states[index]?.name;
+    return {
+      ...result,
+      edges: result.diagram.edges.map(({ from, to, label }) => `${name(from)} -${label}-> ${name(to)}`),
+    };
+  };
+
+  it('names the alphabet next to the diagram', () => {
+    expect(derived('(a|b)*abb').alphabet).toBe('Σ = {a, b}');
+    expect(derived('\\d+x').alphabet).toBe('Σ = {0–9, x}');
+    expect(derived('').alphabet).toBe('Σ = {}');
+    expect(stateNames('ab')).toHaveLength(3);
+    expect(buildDiagram(request('ab'))).toMatchObject({ alphabet: 'Σ = ASCII' });
+  });
+
+  it('has the same states and edges as over ASCII for a regex without dot or negation, while the sink is hidden', () => {
+    const structure = (regex: string, overrides: Partial<DiagramRequest>) => {
+      const result = buildDiagram(request(regex, overrides));
+      if (!result.ok) throw new Error(result.error.message);
+      return {
+        states: result.diagram.states.map(({ name, initial, accepting }) => ({ name, initial, accepting })),
+        edges: result.diagram.edges.map(({ from, to }) => [from, to]),
+      };
+    };
+    for (const regex of ['(a|b)*abb', 'a|b', 'a{2,4}', '\\d+(\\.\\d+)?', '[a-c]x|y']) {
+      for (const representation of ['enfa', 'nfa', 'dfa', 'min-dfa'] as const) {
+        expect(structure(regex, { representation, alphabet: 'derived' })).toEqual(structure(regex, { representation }));
+      }
+    }
+    // Only the label of an edge for the whole alphabet differs.
+    expect(derived('a|b', { representation: 'min-dfa' }).edges).toEqual(['q0 -a, b-> q1']);
+  });
+
+  it('completes a DFA with the characters of the alphabet only', () => {
+    const { edges, diagram } = derived('ab', { showSink: true });
+    expect(diagram.states.map((state) => state.name)).toEqual(['q0', 'q1', 'q2', 'q3']);
+    expect(edges).toEqual([
+      'q0 -a-> q1',
+      'q0 -b-> q3',
+      'q1 -b-> q2',
+      'q1 -a-> q3',
+      'q2 -a, b-> q3',
+      'q3 -a, b-> q3',
+    ]);
+  });
+
+  it('writes Σ on an edge for all characters of a larger alphabet', () => {
+    const { edges } = derived('[a-f]x', { showSink: true });
+    expect(edges.at(-1)).toBe('q3 -Σ-> q3');
+  });
+
+  it('needs no sink where every string over the alphabet can still be accepted', () => {
+    expect(derived('(a|b)*abb', { representation: 'min-dfa', showSink: true }).diagram.states).toHaveLength(4);
+    expect(stateNames('(a|b)*abb', { representation: 'min-dfa', showSink: true })).toHaveLength(5);
+  });
+
+  it('lets the dot and negation range over the alphabet', () => {
+    expect(derived('(a|b)*a.', { representation: 'min-dfa' }).edges).toContain('q1 -a-> q2');
+    expect(derived('a.').edges).toEqual(['q0 -a-> q1', 'q1 -a-> q2']);
+    expect(derived('[^a]b').edges).toEqual(['q0 -b-> q1', 'q1 -b-> q2']);
+    expect(derived('[^a]|b|c', { representation: 'min-dfa' }).edges).toEqual(['q0 -[bc]-> q1']);
+    // Over ASCII, the same regex keeps its usual meaning.
+    expect(buildDiagram(request('a.'))).toMatchObject({ diagram: { edges: [{ label: 'a' }, { label: '.' }] } });
+  });
+
+  it('gives no notice as long as every part can match', () => {
+    expect(derived('(a|b)*a.').notice).toBeNull();
+    expect(derived('').notice).toBeNull();
+    expect(buildDiagram(request('.'))).toMatchObject({ notice: null });
+  });
+
+  it('points out a dot or a negation that is left without characters', () => {
+    expect(derived('.').notice).toBe(
+      "'.' at position 1 matches nothing, because the alphabet is empty. " +
+        'The alphabet consists of the characters that are written in the regex.',
+    );
+    expect(derived('"[^"]*"').notice).toBe(
+      `'[^"]' at position 2 matches nothing, because no character of the alphabet {"} fits. ` +
+        'The alphabet consists of the characters that are written in the regex.',
+    );
+    expect(derived('"[^"]*"').diagram.states).toHaveLength(3);
   });
 });
