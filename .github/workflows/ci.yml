@@ -36,6 +36,14 @@ jobs:
         run: pnpm build
       - name: End-to-end tests
         run: pnpm test:e2e
+      - name: Upload traces of failed browser tests
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload site
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v5

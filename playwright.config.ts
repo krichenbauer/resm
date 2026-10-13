@@ -10,8 +10,11 @@ export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  reporter: process.env.CI ? 'github' : 'list',
-  use: { baseURL },
+  // On CI, list every test in the log as well, so a failure is easy to find and to quote.
+  reporter: process.env.CI ? [['list'], ['github']] : 'list',
+  // Shared CI machines are slow; waiting longer there does not make any assertion weaker.
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
+  use: { baseURL, trace: process.env.CI ? 'retain-on-failure' : 'off' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
