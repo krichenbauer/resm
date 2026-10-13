@@ -140,8 +140,8 @@ describe('diagram', () => {
       'q0 -[^a]-> q3',
       'q1 -b-> q2',
       'q1 -[^b]-> q3',
-      'q2 -[\\x00-\\x7f]-> q3',
-      'q3 -[\\x00-\\x7f]-> q3',
+      'q2 -Σ-> q3',
+      'q3 -Σ-> q3',
     ]);
 
     const minimalShown = toDiagram(minimize(dfa('(a|b)*abb'), { keepSink: true }));
@@ -151,7 +151,7 @@ describe('diagram', () => {
       'q1 -[^ab]-> q4',
       'q2 -[^ab]-> q4',
       'q3 -[^ab]-> q4',
-      'q4 -[\\x00-\\x7f]-> q4',
+      'q4 -Σ-> q4',
     ]);
   });
 });
