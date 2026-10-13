@@ -185,6 +185,39 @@ test('lets the canvas, not the browser, handle touch gestures', async ({ page })
   expect(await touchAction('resm-diagram .canvas')).toBe('none');
 });
 
+test('never selects or highlights anything on the canvas', async ({ page }) => {
+  await showRegex(page, 'ab', 3);
+
+  // Nothing in the diagram can be selected, in any browser's spelling of the property.
+  for (const selector of ['resm-diagram', 'resm-diagram .canvas', '[data-state="q1"] text', '[data-edge] text']) {
+    const selectable = await page
+      .locator(selector)
+      .first()
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return style.userSelect || style.getPropertyValue('-webkit-user-select');
+      });
+    expect(selectable, selector).toBe('none');
+  }
+
+  // A browser that starts a selection anyway is stopped.
+  const prevented = await page.locator('[data-state="q1"] text').evaluate((text) => {
+    const event = new Event('selectstart', { bubbles: true, cancelable: true, composed: true });
+    text.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+
+  // Dragging a state across the diagram and up into the controls leaves nothing selected.
+  const from = await centerOf(state(page, 'q0'));
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 300, from.y + 40, { steps: 5 });
+  await page.mouse.move(from.x + 100, 10, { steps: 5 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('');
+});
+
 test('listens for gestures on a painted element that covers the whole canvas', async ({ page }) => {
   // Browsers decide where wheel and touch events need the page's attention
   // from what is painted. An SVG paints nothing where the diagram is not,

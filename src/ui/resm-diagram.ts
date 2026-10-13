@@ -89,6 +89,19 @@ export class ResmDiagram extends LitElement {
     }
 
     /*
+     * Dragging on the canvas moves things; it must never select or highlight
+     * them. Safari needs its own spelling, and on touch screens it would also
+     * flash a highlight on tapping and open a menu on a long press.
+     */
+    :host,
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /*
      * The gestures are handled by this element around the drawing. Browsers
      * decide from what is painted where wheel and touch events need the
      * page's attention, and the drawing paints nothing where the diagram is
@@ -168,8 +181,6 @@ export class ResmDiagram extends LitElement {
       fill: var(--resm-text);
       text-anchor: middle;
       dominant-baseline: central;
-      user-select: none;
-      -webkit-user-select: none;
     }
 
     .name {
@@ -448,6 +459,7 @@ export class ResmDiagram extends LitElement {
         @gesturestart=${this.onSafariPinchStart}
         @gesturechange=${this.onSafariPinchChange}
         @gestureend=${this.onSafariPinchStart}
+        @selectstart=${preventSelection}
       >
         <svg
           role="img"
@@ -478,6 +490,11 @@ export class ResmDiagram extends LitElement {
       </div>
     `;
   }
+}
+
+/** Stops a browser that starts selecting on the canvas in spite of the styles. */
+function preventSelection(event: Event): void {
+  event.preventDefault();
 }
 
 function renderEdge({ id, path, label }: SceneEdge) {
