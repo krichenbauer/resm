@@ -240,6 +240,10 @@ Browser tests live in `e2e/` and run in Chromium, Firefox, and WebKit. The tests
 
 The browser tests build the site and serve it from the subpath `/resm/`, the same way GitHub Pages does, so a broken base path fails locally. They also fail if the page requests anything from another host.
 
+On CI, the Chromium and Firefox tests must pass. The WebKit tests are run and reported there as well, but do not block the build for now: the WebKit build that Nix provides closes itself on the Linux machines of GitHub Actions, which is still being investigated. Until then, run the WebKit tests on macOS before a release, with `pnpm test:e2e --project=webkit`.
+
+On Linux, every browser launch prints "Skipping host requirements validation logic because `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS` env variable is set." The flake sets that variable on purpose, because the browsers from Nix bring their own libraries; the message is not an error.
+
 Playwright needs browser binaries that match its version:
 
 - **NixOS (x86_64):** the flake provides patched browsers. `@playwright/test` in `package.json` is pinned to the Playwright version in the locked nixpkgs revision, currently 1.63.0. Change both together: after `nix flake update`, check the new version with `nix eval --raw --inputs-from . nixpkgs#playwright-driver.version` and pin `@playwright/test` to it.
