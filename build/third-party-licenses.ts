@@ -2,9 +2,10 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Plugin } from 'vite';
 
-interface PackageNotice {
-  readonly name: string;
-  readonly version: string;
+/** The license notice of something that the site contains. */
+export interface Notice {
+  /** What the notice is for, such as `lit - 3.3.3`. */
+  readonly title: string;
   readonly license: string;
   readonly text: string;
 }
@@ -23,15 +24,14 @@ function findPackageDir(moduleId: string): string | undefined {
   return undefined;
 }
 
-function readNotice(packageDir: string): PackageNotice {
+function readNotice(packageDir: string): Notice {
   const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
   const licenseFile = readdirSync(packageDir).find((file) => /^(license|licence|copying)/i.test(file));
   if (typeof manifest.license !== 'string' || !licenseFile) {
     throw new Error(`Cannot find the license of the bundled package in ${packageDir}.`);
   }
   return {
-    name: String(manifest.name),
-    version: String(manifest.version),
+    title: `${String(manifest.name)} - ${String(manifest.version)}`,
     license: manifest.license,
     text: readFileSync(join(packageDir, licenseFile), 'utf8').trim(),
   };
@@ -42,8 +42,12 @@ function readNotice(packageDir: string): PackageNotice {
  * minification strips them from the code. Vite's own `build.license` option
  * does the same but leaves out what is bundled into web workers, so the worker
  * build reports its modules through `collect` and the main build emits the file.
+ * `copied` lists what the site contains without it being an installed package.
  */
-export function thirdPartyLicenses(fileName: string): { collect: Plugin; emit: Plugin } {
+export function thirdPartyLicenses(
+  fileName: string,
+  copied: readonly Notice[] = [],
+): { collect: Plugin; emit: Plugin } {
   const packageDirs = new Set<string>();
   const collectFrom = (bundle: Record<string, { type: string; moduleIds?: string[] }>) => {
     for (const chunk of Object.values(bundle)) {
@@ -66,10 +70,10 @@ export function thirdPartyLicenses(fileName: string): { collect: Plugin; emit: P
       apply: 'build',
       generateBundle(_, bundle) {
         collectFrom(bundle);
-        const notices = [...packageDirs].map(readNotice).sort((a, b) => a.name.localeCompare(b.name));
-        const sections = notices.map(
-          ({ name, version, license, text }) => `## ${name} - ${version} (${license})\n\n${text}\n`,
+        const notices = [...[...packageDirs].map(readNotice), ...copied].sort((a, b) =>
+          a.title.localeCompare(b.title),
         );
+        const sections = notices.map(({ title, license, text }) => `## ${title} (${license})\n\n${text}\n`);
         this.emitFile({
           type: 'asset',
           fileName,

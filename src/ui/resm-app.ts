@@ -1,4 +1,4 @@
-import { LitElement, type PropertyValues, css, html, unsafeCSS } from 'lit';
+import { LitElement, type PropertyValues, css, html, svg, unsafeCSS } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { describeDiagram } from '../diagram/describe.ts';
 import type { DiagramError, DiagramRequest } from '../diagram/pipeline.ts';
@@ -21,6 +21,7 @@ import { type StateStorage, initialState, loadState, saveState } from '../settin
 import { DARK, LIGHT, type Palette } from '../theme/palette.ts';
 import type { ComputeResult } from '../worker/compute.ts';
 import { DiagramClient } from '../worker/diagram-client.ts';
+import { GITHUB_MARK_PATH, REPOSITORY_URL } from './repository.ts';
 import type { DiagramUpdate } from './resm-diagram.ts';
 import './resm-diagram.ts';
 
@@ -132,7 +133,37 @@ export class ResmApp extends LitElement {
       width: 6rem;
     }
 
-    :is(input, select, button):focus-visible {
+    .repository {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 0.375rem;
+      color: inherit;
+    }
+
+    .repository svg {
+      width: 1.5rem;
+      height: 1.5rem;
+      fill: currentColor;
+    }
+
+    /*
+     * Where the controls need more than one row, the link stays in the top
+     * right corner, at the end of the first row, and the others follow it.
+     */
+    @media (max-width: 48rem) {
+      .repository {
+        order: 1;
+      }
+
+      .controls > :is(select, button) {
+        order: 2;
+      }
+    }
+
+    :is(input, select, button, a):focus-visible {
       outline: 2px solid var(--resm-focus);
       outline-offset: 1px;
     }
@@ -449,6 +480,18 @@ export class ResmApp extends LitElement {
           <button type="button" popovertarget="export-menu">Export</button>
           <button type="button" @click=${this.share}>${this.linkCopied ? 'Link copied' : 'Share'}</button>
           <button type="button" popovertarget="settings-menu">Settings</button>
+          <a
+            class="repository"
+            href=${REPOSITORY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="RESM on GitHub: documentation and source code"
+            title="Documentation and source code on GitHub"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              ${svg`<path d=${GITHUB_MARK_PATH} />`}
+            </svg>
+          </a>
         </div>
         <p class="error" id="error" role="status">${this.errorText()}</p>
         <p class="notice" id="notice" aria-live="polite">${this.notice}</p>

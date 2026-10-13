@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { repositoryLink } from './support.ts';
 
 test('starts with an empty single-line regex field', async ({ page }) => {
   await page.goto('./');
@@ -45,6 +46,28 @@ test('keeps the controls usable on a narrow phone screen', async ({ page }) => {
   expect(scrollWidth).toBeLessThanOrEqual(320);
 });
 
+test('links to the documentation and the source code from the top right corner', async ({ page }) => {
+  await page.goto('./');
+  const link = repositoryLink(page);
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://github.com/krichenbauer/resm#readme');
+  // The link leaves RESM, so it opens a new tab and tells the other site nothing about this one.
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(link.locator('svg')).toHaveCount(1);
+
+  for (const width of [1280, 340]) {
+    await page.setViewportSize({ width, height: 600 });
+    const box = await link.boundingBox();
+    const field = await page.getByRole('textbox', { name: 'Regular expression' }).boundingBox();
+    if (!box || !field) throw new Error('link is not rendered');
+    expect(width - (box.x + box.width), `at a width of ${width}`).toBeLessThan(16);
+    // In the first row of the controls, next to the regex field.
+    expect(Math.abs(box.y + box.height / 2 - (field.y + field.height / 2)), `at a width of ${width}`).toBeLessThan(4);
+    expect(box.x, `at a width of ${width}`).toBeGreaterThanOrEqual(field.x + field.width);
+  }
+});
+
 test('loads every resource from its own host and base path', async ({ page, baseURL }) => {
   if (!baseURL) throw new Error('baseURL is not configured');
   const requestedUrls: string[] = [];
@@ -74,4 +97,7 @@ test('ships the license notices of bundled dependencies', async ({ request }) =>
   // already contains its graph library, which has the same notice.
   expect(notices).toMatch(/^## @dagrejs\/dagre - .* \(MIT\)$/m);
   expect(notices).toContain('Copyright (c) 2012-2014 Chris Pettitt');
+  // The GitHub mark is copied into the page, not installed as a package.
+  expect(notices).toMatch(/^## Octicons, GitHub mark \(MIT\)$/m);
+  expect(notices).toContain('GitHub Inc.');
 });

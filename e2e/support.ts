@@ -124,3 +124,5 @@ export async function useAsciiAlphabet(page: Page): Promise<void> {
   await alphabetOption(page).selectOption('ASCII');
   await page.keyboard.press('Escape');
 }
+
+export const repositoryLink = (page: Page) => page.getByRole('link', { name: 'RESM on GitHub: documentation and source code' });

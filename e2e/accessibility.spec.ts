@@ -6,6 +6,7 @@ import {
   exportButton,
   recordPositions,
   regexField,
+  repositoryLink,
   representation,
   settingsButton,
   shareButton,
@@ -36,10 +37,16 @@ const tabKey = (browserName: string) => (browserName === 'webkit' ? 'Alt+Tab' : 
 
 test('reaches every control and the diagram with the keyboard, in reading order', async ({ page, browserName }) => {
   await regexField(page).focus();
-  for (const next of [representation(page), exportButton(page), shareButton(page), settingsButton(page), diagramArea(page)]) {
+  for (const next of [representation(page), exportButton(page), shareButton(page), settingsButton(page)]) {
     await page.keyboard.press(tabKey(browserName));
     await expect(next).toBeFocused();
   }
+  await page.keyboard.press(tabKey(browserName));
+  // Whether the tab key stops at links is a setting of WebKit itself, which differs between its platforms.
+  const stopsAtLinks = await repositoryLink(page).evaluate((link) => link.matches(':focus'));
+  if (browserName !== 'webkit') expect(stopsAtLinks).toBe(true);
+  if (stopsAtLinks) await page.keyboard.press(tabKey(browserName));
+  await expect(diagramArea(page)).toBeFocused();
 });
 
 test('opens a menu with the keyboard and returns the focus when it closes', async ({ page, browserName }) => {
