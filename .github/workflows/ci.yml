@@ -34,23 +34,10 @@ jobs:
         run: pnpm test
       - name: Production build
         run: pnpm build
-      - name: End-to-end tests (Chromium, Firefox)
-        run: pnpm test:e2e --project=chromium --project=firefox
-      # WebKit from Nix found no graphics driver on this runner and closed
-      # itself as soon as a page was opened. The flake now points it to
-      # Mesa's software renderer. Until that is confirmed here, the WebKit
-      # tests are reported but do not decide whether the build passes. The
-      # first of the two steps logs what the browser itself says.
-      - name: WebKit diagnostics (informational)
-        continue-on-error: true
-        env:
-          DEBUG: pw:browser
-        run: pnpm test:e2e --project=webkit shell.spec.ts
-      - name: End-to-end tests (WebKit, informational)
-        continue-on-error: true
-        run: pnpm test:e2e --project=webkit
+      - name: End-to-end tests
+        run: pnpm test:e2e
       - name: Upload traces of failed browser tests
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-test-results
