@@ -45,6 +45,59 @@ describe('completion', () => {
   });
 });
 
+describe('completion over a smaller alphabet', () => {
+  it('adds transitions to the sink for the missing characters of the alphabet only', () => {
+    const result = complete(dfa('ab'), CharSet.of('ab'));
+    expect(describeTransitions(result)).toEqual([
+      "0 -'a'-> 1",
+      "0 -'b'-> 3",
+      "1 -'b'-> 2",
+      "1 -'a'-> 3",
+      '2 -[a-b]-> 3',
+      '3 -[a-b]-> 3',
+    ]);
+    expect(result.sink).toBe(3);
+  });
+
+  it('needs no sink when every state has a transition for every character of the alphabet', () => {
+    const input = dfa('(a|b)*');
+    expect(complete(input, CharSet.of('ab'))).toBe(input);
+    expect(complete(dfa(''), CharSet.EMPTY).sink).toBeUndefined();
+  });
+});
+
+describe('minimization over a smaller alphabet', () => {
+  const alphabet = CharSet.of('ab');
+
+  it('has no sink where every string over the alphabet can still be accepted', () => {
+    const result = minimize(dfa('(a|b)*abb'), { keepSink: true, alphabet });
+    expect(result.stateCount).toBe(4);
+    expect(result.sink).toBeUndefined();
+    // Over all of ASCII, any other character leads to a sink.
+    expect(minimize(dfa('(a|b)*abb'), { keepSink: true }).stateCount).toBe(5);
+  });
+
+  it('keeps a sink that the characters of the alphabet can lead to', () => {
+    const result = minimize(dfa('ab'), { keepSink: true, alphabet });
+    expect(describeTransitions(result)).toEqual([
+      "0 -'a'-> 1",
+      "0 -'b'-> 2",
+      "1 -'a'-> 2",
+      "1 -'b'-> 3",
+      '2 -[a-b]-> 2',
+      '3 -[a-b]-> 2',
+    ]);
+    expect(result.sink).toBe(2);
+  });
+
+  it('works for the empty alphabet', () => {
+    const result = minimize(dfa(''), { keepSink: true, alphabet: CharSet.EMPTY });
+    expect(result.stateCount).toBe(1);
+    expect([...result.accepting]).toEqual([0]);
+    expect(result.transitions).toEqual([]);
+  });
+});
+
 describe('minimization', () => {
   it.each([
     ['', 1],

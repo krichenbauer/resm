@@ -9,16 +9,16 @@ function at<T>(items: ArrayLike<T>, index: number): T {
 }
 
 /**
- * Makes a DFA total: a new non-accepting sink state collects the transitions
- * for all characters that a state has no transition for. Returns the DFA
- * itself if nothing is missing.
+ * Makes a DFA total over the given alphabet: a new non-accepting sink state
+ * collects the transitions for all characters of the alphabet that a state
+ * has no transition for. Returns the DFA itself if nothing is missing.
  */
-export function complete(dfa: Automaton): Automaton {
+export function complete(dfa: Automaton, alphabet: CharSet = CharSet.ALL): Automaton {
   const outgoing: Transition[][] = Array.from({ length: dfa.stateCount }, () => []);
   for (const transition of dfa.transitions) at(outgoing, transition.from).push(transition);
 
   const missing = outgoing.map((transitions) =>
-    transitions.reduce((rest, { set }) => rest.minus(set ?? CharSet.EMPTY), CharSet.ALL),
+    transitions.reduce((rest, { set }) => rest.minus(set ?? CharSet.EMPTY), alphabet),
   );
   if (missing.every((set) => set.isEmpty)) return dfa;
 
@@ -27,7 +27,7 @@ export function complete(dfa: Automaton): Automaton {
     const rest = at(missing, state);
     return rest.isEmpty ? own : [...own, { from: state, to: sink, set: rest }];
   });
-  transitions.push({ from: sink, to: sink, set: CharSet.ALL });
+  transitions.push({ from: sink, to: sink, set: alphabet });
   return { stateCount: dfa.stateCount + 1, start: dfa.start, accepting: dfa.accepting, transitions, sink };
 }
 
@@ -37,13 +37,18 @@ export function complete(dfa: Automaton): Automaton {
  * them, following the transitions in alphabet order.
  *
  * States from which no accepting state can be reached are all equivalent.
- * With `keepSink` they remain as one sink state and the result is total;
+ * With `keepSink` they remain as one sink state and the result is total
+ * over the alphabet, which is all of ASCII unless `alphabet` says otherwise;
  * without it they are dropped, so a missing transition rejects. The initial
  * state is kept either way.
  */
-export function minimize(dfa: Automaton, options: { keepSink: boolean }): Automaton {
-  const total = complete(dfa);
-  const blocks = partitionAlphabet(total.transitions.map(({ set }) => set ?? CharSet.EMPTY));
+export function minimize(dfa: Automaton, options: { keepSink: boolean; alphabet?: CharSet }): Automaton {
+  const alphabet = options.alphabet ?? CharSet.ALL;
+  const total = complete(dfa, alphabet);
+  const blocks = partitionAlphabet(
+    total.transitions.map(({ set }) => set ?? CharSet.EMPTY),
+    alphabet,
+  );
   const stateCount = total.stateCount;
   const blockCount = blocks.length;
 

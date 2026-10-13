@@ -29,6 +29,17 @@ describe('alphabet partition', () => {
     expect(blocks(CharSet.of('ax'), CharSet.of('ax'), CharSet.of('b'))).toEqual(['[\\x00-`c-wy-\\x7f]', '[ax]', "'b'"]);
   });
 
+  it('covers only the given alphabet when that is smaller than ASCII', () => {
+    const alphabet = CharSet.of('abcx');
+    expect(partitionAlphabet([CharSet.range('a', 'b'), CharSet.of('bq')], alphabet).map(formatSet)).toEqual([
+      "'a'",
+      "'b'",
+      '[cx]',
+    ]);
+    expect(partitionAlphabet([], alphabet).map(formatSet)).toEqual(['[a-cx]']);
+    expect(partitionAlphabet([CharSet.of('a')], CharSet.EMPTY)).toEqual([]);
+  });
+
   it('yields disjoint blocks that cover the alphabet, ordered by their first character', () => {
     const sets = [CharSet.range('0', '9'), CharSet.range('5', 'z'), CharSet.of('_a'), CharSet.of('\n').complement()];
     const partition = partitionAlphabet(sets);
