@@ -30,6 +30,25 @@ describe('shape motion', () => {
     expect(motion.settled).toBe(true);
   });
 
+  it('slides the label of a known edge along it, and switches its side at once', () => {
+    const motion = new ShapeMotion();
+    motion.setShapes(['a'], [{ kind: 'arc', bend: 0.2, label: { at: 0.5, side: 1 } }], { animate: true });
+    const target = { kind: 'arc', bend: 0.2, label: { at: 0.26, side: -1 } } as const;
+    motion.setShapes(['a'], [target], { animate: true });
+    expect(motion.settled).toBe(false);
+
+    motion.step(FRAME);
+    const [early] = motion.current();
+    if (early?.kind !== 'arc' || !early.label) throw new Error('label is missing');
+    expect(early.label.side).toBe(-1);
+    expect(early.label.at).toBeLessThan(0.5);
+    expect(early.label.at).toBeGreaterThan(0.4);
+
+    for (let frame = 0; frame < 120; frame++) motion.step(FRAME);
+    expect(motion.current()).toEqual([target]);
+    expect(motion.settled).toBe(true);
+  });
+
   it('turns a loop the short way round', () => {
     const motion = new ShapeMotion();
     motion.setShapes(['a'], [{ kind: 'loop', angle: (-3 * Math.PI) / 4 }], { animate: true });

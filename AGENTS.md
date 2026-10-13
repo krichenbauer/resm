@@ -80,7 +80,7 @@ These refine the sections above. `README.md` documents them for users.
 - **Limits:** repetition counts up to 1000; groups nested up to 100 deep; the state limit is adjustable from 1 to 500; automata that are only intermediate steps may have up to 2000 states, or four times the state limit if that is more.
 - **Thompson details:** `x+` and `x?` are built like `x*` without the bypass and without the loop; an alternation branches into all its options from one state.
 - **Edge labels:** regex notation, with `␣` for the space and `\n`, `\t`, `\x1f`, etc. for control characters. Labels are relative to the alphabet: `[^a]` stands for all other characters of `Σ`.
-- **Layout:** dagre places the states; edges are shaped by RESM itself so they can follow moving states. Back edges, loops, and edges that skip many layers are kept out of the layered layout, and a shown sink state is placed below the other states.
+- **Layout:** dagre places the states; edges are shaped by RESM itself so they can follow moving states. Back edges, loops, and edges that skip many layers are kept out of the layered layout, and a shown sink state is placed below the other states. Every label is placed along its edge where no other edge, label, or state obstructs it, as far as such a place exists.
 - **Node identity:** a state is identified across edits by the labels along the path on which a breadth-first search first reaches it.
 - **Auto-fit:** the view zooms in on its own only when the diagram would be more than 2.5 times larger when fitted; a diagram is never enlarged beyond its natural size.
 - **Reduced motion:** if the operating system asks for it, changes appear at once.

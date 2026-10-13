@@ -92,7 +92,7 @@ export function buildScene(
       // The label lies just beyond the outermost point of the loop.
       include(geometry.label.x, geometry.label.y, STATE_RADIUS, STATE_RADIUS);
     } else {
-      geometry = arcGeometry(at(from), at(to), shape.bend, width);
+      geometry = arcGeometry(at(from), at(to), shape.bend, width, shape.label);
       for (const point of arcPoints(at(from), at(to), shape.bend, 9)) include(point.x, point.y, 0, 0);
     }
     include(geometry.label.x, geometry.label.y, width / 2, LABEL_HEIGHT / 2);

@@ -50,7 +50,11 @@ export class ShapeMotion {
       if (!target || shape === target) return target ?? shape;
       if (shape.kind === 'arc' && target.kind === 'arc') {
         const rest = target.bend - shape.bend;
-        return Math.abs(rest) < REST ? target : { kind: 'arc', bend: shape.bend + rest * share };
+        // The label slides along its edge. Changing sides has no in-between, so that happens at once.
+        const slide = target.label && shape.label ? target.label.at - shape.label.at : 0;
+        if (Math.abs(rest) < REST && Math.abs(slide) < REST) return target;
+        const label = target.label && { side: target.label.side, at: target.label.at - slide * (1 - share) };
+        return { kind: 'arc', bend: shape.bend + rest * share, ...(label ? { label } : {}) };
       }
       if (shape.kind === 'loop' && target.kind === 'loop') {
         const rest = turn(shape.angle, target.angle);

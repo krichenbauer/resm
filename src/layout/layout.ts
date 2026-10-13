@@ -1,17 +1,20 @@
 import { Graph, layout } from '@dagrejs/dagre';
 import type { Diagram } from '../diagram/diagram.ts';
 import {
+  type LabelPlacement,
   type Point,
   STATE_RADIUS,
   arcGeometry,
   arcPoints,
   estimateLabelWidth,
   loopGeometry,
+  loopPoints,
 } from './geometry.ts';
+import { INITIAL_ARROW_LENGTH } from './scene.ts';
 
 /** How an edge is drawn: as an arc between two states, or as a loop at one state. */
 export type EdgeShape =
-  | { readonly kind: 'arc'; readonly bend: number }
+  | { readonly kind: 'arc'; readonly bend: number; readonly label?: LabelPlacement }
   | { readonly kind: 'loop'; readonly angle: number };
 
 /** Where the states of a diagram go and how its edges are shaped, index by index. */
@@ -86,7 +89,7 @@ function findBackEdges(diagram: Diagram): Set<number> {
 }
 
 /** How far below the other states the sink state is placed, between the outlines. */
-const SINK_DROP = 110;
+const SINK_DROP = 150;
 
 /**
  * The layer of every state: the length of the longest path of `edges` that
@@ -279,6 +282,211 @@ function chooseLoopAngle(occupied: readonly number[]): number {
   return best;
 }
 
+/** An axis-parallel box. */
+interface Box {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+/** A straight piece of the curve of an edge, with the index of that edge. */
+interface Piece {
+  readonly edge: number;
+  readonly a: Point;
+  readonly b: Point;
+}
+
+/** Half the height of the text of a label, and the free space that a label keeps around its text. */
+const LABEL_HALF_HEIGHT = 7;
+const LABEL_MARGIN = 3;
+
+/** Places to try for a label along its edge, the middle first, and the sides of the edge. */
+const LABEL_SHARES = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.18, 0.82, 0.12, 0.88];
+
+/** How bad it is for a label to lie on a state, to be crossed by an edge, and to touch another label. */
+const STATE_COST = 100;
+const CROSSING_COST = 30;
+const OVERLAP_COST = 30;
+
+/** Size of the cells of the grid in which the pieces of all curves are looked up. */
+const GRID_CELL = 64;
+
+const gridKey = (column: number, row: number) => ((column & 0xffff) << 16) | (row & 0xffff);
+
+function cellsOf(box: Box): number[] {
+  const keys: number[] = [];
+  for (let column = Math.floor(box.minX / GRID_CELL); column <= Math.floor(box.maxX / GRID_CELL); column++) {
+    for (let row = Math.floor(box.minY / GRID_CELL); row <= Math.floor(box.maxY / GRID_CELL); row++) {
+      keys.push(gridKey(column, row));
+    }
+  }
+  return keys;
+}
+
+const boxesOverlap = (a: Box, b: Box) => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY;
+
+/** Whether the line segment from `a` to `b` passes through the box. */
+function pieceCrossesBox({ a, b }: Piece, box: Box): boolean {
+  // Clip the segment against the four sides of the box; something is left if it passes through.
+  let enter = 0;
+  let leave = 1;
+  const clip = (delta: number, distanceToMin: number, distanceToMax: number): boolean => {
+    if (delta === 0) return distanceToMin <= 0 && distanceToMax >= 0;
+    const first = distanceToMin / delta;
+    const second = distanceToMax / delta;
+    enter = Math.max(enter, Math.min(first, second));
+    leave = Math.min(leave, Math.max(first, second));
+    return enter <= leave;
+  };
+  return clip(b.x - a.x, box.minX - a.x, box.maxX - a.x) && clip(b.y - a.y, box.minY - a.y, box.maxY - a.y);
+}
+
+function labelBox(center: Point, width: number): Box {
+  return {
+    minX: center.x - width / 2 - LABEL_MARGIN,
+    maxX: center.x + width / 2 + LABEL_MARGIN,
+    minY: center.y - LABEL_HALF_HEIGHT - LABEL_MARGIN,
+    maxY: center.y + LABEL_HALF_HEIGHT + LABEL_MARGIN,
+  };
+}
+
+/**
+ * Finds a place for the label of every edge between two states where it can
+ * be read: not on a state, not crossed by another edge, and not on another
+ * label. Labels prefer the middle of their edge on the outer side of its
+ * bend, and move along the edge or to its other side only as far as needed.
+ * Where no free place exists, the least obstructed one is taken.
+ */
+function placeLabels(diagram: Diagram, positions: readonly Point[], shapes: readonly EdgeShape[]): EdgeShape[] {
+  const at = (state: number): Point => positions[state] ?? { x: 0, y: 0 };
+  const widths = diagram.edges.map(({ label }) => estimateLabelWidth(label));
+
+  // All curves as straight pieces, in a grid for quick lookup of those near a label.
+  const pieces: Piece[] = [];
+  const grid = new Map<number, number[]>();
+  const addCurve = (edge: number, points: readonly Point[]) => {
+    for (let index = 0; index + 1 < points.length; index++) {
+      const [a, b] = [points[index], points[index + 1]];
+      if (!a || !b) continue;
+      const box = { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) };
+      for (const key of cellsOf(box)) {
+        let cell = grid.get(key);
+        if (!cell) grid.set(key, (cell = []));
+        cell.push(pieces.length);
+      }
+      pieces.push({ edge, a, b });
+    }
+  };
+  diagram.edges.forEach(({ from, to }, index) => {
+    const shape = shapes[index];
+    if (shape?.kind === 'loop') addCurve(index, loopPoints(at(from), shape.angle, 13));
+    else if (shape) addCurve(index, arcPoints(at(from), at(to), shape.bend, CURVE_PIECES + 1));
+  });
+  diagram.states.forEach(({ initial }, state) => {
+    const { x, y } = at(state);
+    // The initial arrow is in the way of labels like any edge.
+    if (initial) addCurve(-1, [{ x: x - STATE_RADIUS - INITIAL_ARROW_LENGTH, y }, { x: x - STATE_RADIUS, y }]);
+  });
+
+  // The labels of loops have their fixed place; the others are found one by one.
+  const boxes: (Box | undefined)[] = diagram.edges.map(({ from }, index) => {
+    const shape = shapes[index];
+    return shape?.kind === 'loop' ? labelBox(loopGeometry(at(from), shape.angle).label, widths[index] ?? 0) : undefined;
+  });
+
+  /** What is in the way of a label in the given box, apart from other labels: states and edges. */
+  const obstruction = (edge: number, box: Box): number => {
+    let cost = 0;
+    for (const center of positions) {
+      const dx = Math.max(box.minX - center.x, 0, center.x - box.maxX);
+      const dy = Math.max(box.minY - center.y, 0, center.y - box.maxY);
+      if (Math.hypot(dx, dy) < STATE_RADIUS) cost += STATE_COST;
+    }
+    const crossing = new Set<number>();
+    for (const key of cellsOf(box)) {
+      for (const index of grid.get(key) ?? []) {
+        const piece = pieces[index];
+        if (piece && piece.edge !== edge && !crossing.has(piece.edge) && pieceCrossesBox(piece, box)) {
+          crossing.add(piece.edge);
+        }
+      }
+    }
+    return cost + crossing.size * CROSSING_COST;
+  };
+
+  // The places that each label could take, in order of preference, with what obstructs them.
+  const candidates = diagram.edges.map(({ from, to }, index) => {
+    const shape = shapes[index];
+    if (shape?.kind !== 'arc') return [];
+    const width = widths[index] ?? 0;
+    const outer: 1 | -1 = shape.bend < 0 ? -1 : 1;
+    const inner: 1 | -1 = outer === 1 ? -1 : 1;
+    return LABEL_SHARES.flatMap((share) =>
+      [outer, inner].map((side) => {
+        const placement: LabelPlacement = { at: share, side };
+        const box = labelBox(arcGeometry(at(from), at(to), shape.bend, width, placement).label, width);
+        // Small costs express the preference for the middle and the outer side among free places.
+        const preference = Math.abs(share - 0.5) * 4 + (side === outer ? 0 : 1);
+        return { placement, box, cost: obstruction(index, box) + preference };
+      }),
+    );
+  });
+
+  // Labels with the fewest free places choose first; otherwise a label with
+  // plenty of room could take the only place that is left for another one.
+  const freePlaces = candidates.map((places) => places.filter(({ cost }) => cost < CROSSING_COST).length);
+  const order = candidates
+    .flatMap((places, index) => (places.length > 0 ? [index] : []))
+    .sort((a, b) => (freePlaces[a] ?? 0) - (freePlaces[b] ?? 0) || (widths[b] ?? 0) - (widths[a] ?? 0) || a - b);
+
+  // The labels that are placed so far, in the same kind of grid as the curves.
+  const labelGrid = new Map<number, Set<number>>();
+  const moveLabel = (index: number, box: Box | undefined) => {
+    const previous = boxes[index];
+    if (previous) for (const key of cellsOf(previous)) labelGrid.get(key)?.delete(index);
+    boxes[index] = box;
+    if (!box) return;
+    for (const key of cellsOf(box)) {
+      let cell = labelGrid.get(key);
+      if (!cell) labelGrid.set(key, (cell = new Set()));
+      cell.add(index);
+    }
+  };
+  boxes.forEach((box, index) => moveLabel(index, box));
+
+  const overlappingLabels = (index: number, box: Box): number => {
+    const overlapping = new Set<number>();
+    for (const key of cellsOf(box)) {
+      for (const other of labelGrid.get(key) ?? []) {
+        const otherBox = boxes[other];
+        if (other !== index && otherBox && boxesOverlap(box, otherBox)) overlapping.add(other);
+      }
+    }
+    return overlapping.size;
+  };
+
+  const placements: (LabelPlacement | undefined)[] = shapes.map(() => undefined);
+  // The second round lets every label react to the labels that were placed after it.
+  for (let round = 0; round < 2; round++) {
+    for (const index of order) {
+      let best: { placement: LabelPlacement; box: Box; cost: number } | undefined;
+      for (const { placement, box, cost: ownCost } of candidates[index] ?? []) {
+        if (best && best.cost <= ownCost) continue;
+        const cost = ownCost + overlappingLabels(index, box) * OVERLAP_COST;
+        if (!best || cost < best.cost) best = { placement, box, cost };
+      }
+      placements[index] = best?.placement;
+      moveLabel(index, best?.box);
+    }
+  }
+
+  return shapes.map((shape, index) => {
+    const label = placements[index];
+    return shape.kind === 'arc' && label ? { ...shape, label } : shape;
+  });
+}
+
 /** Computes where to draw the states of a diagram and how to shape its edges. */
 export function layoutDiagram(diagram: Diagram): DiagramLayout {
   const positions = placeStates(diagram);
@@ -307,9 +515,16 @@ export function layoutDiagram(diagram: Diagram): DiagramLayout {
   const shapes = diagram.edges.map(({ from, to, label }): EdgeShape => {
     if (from === to) return { kind: 'loop', angle: loopAngles.get(from) ?? 0 };
     const others = obstacles.flatMap((own, state) => (state === from || state === to ? [] : own));
-    const candidates = connected.has(`${to},${from}`) ? PAIRED_BENDS : BENDS;
+    let candidates = connected.has(`${to},${from}`) ? PAIRED_BENDS : BENDS;
+    // The edges to a sink state fill the space below the other states, so the
+    // edges among those states make way and bend upwards where they can. Up is
+    // to the left of an edge that leads to the right, and the other way round.
+    const leadsLeft = at(to).x < at(from).x;
+    if (diagram.sink !== undefined && from !== diagram.sink && to !== diagram.sink && leadsLeft && candidates === BENDS) {
+      candidates = BENDS.map((bend) => -bend);
+    }
     return { kind: 'arc', bend: chooseBend(at(from), at(to), estimateLabelWidth(label), others, candidates) };
   });
 
-  return { positions, shapes };
+  return { positions, shapes: placeLabels(diagram, positions, shapes) };
 }

@@ -15,6 +15,16 @@ const LABEL_CHAR_WIDTH = 8;
 /** Half the angle between the two ends of a loop, seen from the center of its state. */
 const LOOP_SPREAD = 0.4;
 
+/**
+ * Where the label of an edge between two states sits: `at` the given share of
+ * the way along the curve, from 0 at its start to 1 at its end, and on the
+ * left (1) or right (-1) `side` of the direction of travel.
+ */
+export interface LabelPlacement {
+  readonly at: number;
+  readonly side: 1 | -1;
+}
+
 /** What is needed to draw an edge: the SVG path data and the middle of its label. */
 export interface EdgeGeometry {
   readonly path: string;
@@ -58,7 +68,14 @@ function arcCurve(from: Point, to: Point, bend: number) {
     x: (1 - t) ** 2 * start.x + 2 * (1 - t) * t * control.x + t ** 2 * end.x,
     y: (1 - t) ** 2 * start.y + 2 * (1 - t) * t * control.y + t ** 2 * end.y,
   });
-  return { start, control, end, normal, at };
+  /** The unit vector that points to the left of the direction of travel at `t`. */
+  const leftAt = (t: number): Point => {
+    const tx = (1 - t) * (control.x - start.x) + t * (end.x - control.x);
+    const ty = (1 - t) * (control.y - start.y) + t * (end.y - control.y);
+    const speed = Math.hypot(tx, ty);
+    return speed > 0 ? { x: ty / speed, y: -tx / speed } : normal;
+  };
+  return { start, control, end, at, leftAt };
 }
 
 /** `count` evenly spaced points along the curve of an edge, including both ends. */
@@ -67,28 +84,58 @@ export function arcPoints(from: Point, to: Point, bend: number, count: number): 
   return Array.from({ length: count }, (_, index) => at(index / (count - 1)));
 }
 
-/** The geometry of an edge between two different states; see `arcCurve` for `bend`. */
-export function arcGeometry(from: Point, to: Point, bend: number, labelWidth: number): EdgeGeometry {
-  const { start, control, end, normal, at } = arcCurve(from, to, bend);
-  const middle = at(0.5);
-  // The label sits on the outer side of the bend. The more the edge runs
-  // vertically, the more of the label's width has to clear the line.
-  const offset = (bend < 0 ? -1 : 1) * (LABEL_GAP + (Math.abs(normal.x) * labelWidth) / 2);
+/**
+ * The geometry of an edge between two different states; see `arcCurve` for
+ * `bend`. Unless placed otherwise, the label sits at the middle of the curve
+ * on the outer side of the bend.
+ */
+export function arcGeometry(
+  from: Point,
+  to: Point,
+  bend: number,
+  labelWidth: number,
+  placement: LabelPlacement = { at: 0.5, side: bend < 0 ? -1 : 1 },
+): EdgeGeometry {
+  const { start, control, end, at, leftAt } = arcCurve(from, to, bend);
+  const anchor = at(placement.at);
+  const left = leftAt(placement.at);
+  // The more the edge runs vertically, the more of the label's width has to clear the line.
+  const offset = placement.side * (LABEL_GAP + (Math.abs(left.x) * labelWidth) / 2);
   return {
     path: `M${formatPoint(start)}Q${formatPoint(control)} ${formatPoint(end)}`,
-    label: { x: middle.x + normal.x * offset, y: middle.y + normal.y * offset },
+    label: { x: anchor.x + left.x * offset, y: anchor.y + left.y * offset },
   };
+}
+
+/** The cubic Bézier curve of an edge from a state to itself, pointing in the direction `angle`. */
+function loopCurve(center: Point, angle: number) {
+  const reach = STATE_RADIUS * 2.8;
+  return {
+    start: polar(center, STATE_RADIUS, angle - LOOP_SPREAD),
+    control1: polar(center, reach, angle - LOOP_SPREAD * 1.25),
+    control2: polar(center, reach, angle + LOOP_SPREAD * 1.25),
+    end: polar(center, STATE_RADIUS, angle + LOOP_SPREAD),
+    // Distance of the outermost point of the loop from the center: the curve at its middle.
+    apex: (2 * STATE_RADIUS * Math.cos(LOOP_SPREAD) + 6 * reach * Math.cos(LOOP_SPREAD * 1.25)) / 8,
+  };
+}
+
+/** `count` evenly spaced points along the loop of a state, including both ends. */
+export function loopPoints(center: Point, angle: number, count: number): Point[] {
+  const { start, control1, control2, end } = loopCurve(center, angle);
+  return Array.from({ length: count }, (_, index) => {
+    const t = index / (count - 1);
+    const weights = [(1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t ** 2, t ** 3] as const;
+    return {
+      x: weights[0] * start.x + weights[1] * control1.x + weights[2] * control2.x + weights[3] * end.x,
+      y: weights[0] * start.y + weights[1] * control1.y + weights[2] * control2.y + weights[3] * end.y,
+    };
+  });
 }
 
 /** The geometry of an edge from a state to itself, pointing in the direction `angle`. */
 export function loopGeometry(center: Point, angle: number): EdgeGeometry {
-  const start = polar(center, STATE_RADIUS, angle - LOOP_SPREAD);
-  const end = polar(center, STATE_RADIUS, angle + LOOP_SPREAD);
-  const reach = STATE_RADIUS * 2.8;
-  const control1 = polar(center, reach, angle - LOOP_SPREAD * 1.25);
-  const control2 = polar(center, reach, angle + LOOP_SPREAD * 1.25);
-  // Distance of the outermost point of the loop from the center: the curve at its middle.
-  const apex = (2 * STATE_RADIUS * Math.cos(LOOP_SPREAD) + 6 * reach * Math.cos(LOOP_SPREAD * 1.25)) / 8;
+  const { start, control1, control2, end, apex } = loopCurve(center, angle);
   return {
     path: `M${formatPoint(start)}C${formatPoint(control1)} ${formatPoint(control2)} ${formatPoint(end)}`,
     label: polar(center, apex + LABEL_GAP, angle),

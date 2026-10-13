@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { ORACLE_CORPUS } from '../automata/corpus.ts';
 import type { Diagram } from '../diagram/diagram.ts';
 import { DEFAULT_STATE_LIMIT, buildDiagram } from '../diagram/pipeline.ts';
+import type { AlphabetMode } from '../settings/alphabet-mode.ts';
 import { REPRESENTATIONS, type Representation } from '../settings/representation.ts';
 import { STATE_RADIUS, arcPoints } from './geometry.ts';
+import { findLabelCollisions } from './label-collisions.ts';
 import { layoutDiagram } from './layout.ts';
 import { buildScene } from './scene.ts';
 
-function diagramOf(regex: string, representation: Representation = 'dfa', showSink = false): Diagram {
-  const result = buildDiagram({ regex, representation, showSink, stateLimit: DEFAULT_STATE_LIMIT, alphabet: 'ascii' });
+function diagramOf(
+  regex: string,
+  representation: Representation = 'dfa',
+  showSink = false,
+  alphabet: AlphabetMode = 'ascii',
+): Diagram {
+  const result = buildDiagram({ regex, representation, showSink, stateLimit: DEFAULT_STATE_LIMIT, alphabet });
   if (!result.ok) throw new Error(result.error.message);
   return result.diagram;
 }
@@ -160,6 +167,65 @@ describe('layout', () => {
         });
       }
     });
+  });
+});
+
+describe('label placement', () => {
+  /** Every corpus regex in every representation, over both alphabets. */
+  const diagrams = (showSink: boolean) =>
+    [...ORACLE_CORPUS.map(({ regex }) => regex), '(a|b)*abb(a|b)', '[a-z]+@[a-z]+\\.(com|org)', '(a|b)*a(a|b){3}'].flatMap(
+      (regex) =>
+        REPRESENTATIONS.flatMap(({ id }) =>
+          (['derived', 'ascii'] as const).map((alphabet) => {
+            const result = buildDiagram({ regex, representation: id, showSink, stateLimit: DEFAULT_STATE_LIMIT, alphabet });
+            if (!result.ok) throw new Error(result.error.message);
+            return { name: `${regex} as ${id} over ${alphabet}`, diagram: result.diagram };
+          }),
+        ),
+    );
+
+  it('keeps every label clear of other edges, other labels, and states', () => {
+    for (const { name, diagram } of diagrams(false)) {
+      expect(findLabelCollisions(diagram, layoutDiagram(diagram)), name).toEqual([]);
+    }
+  });
+
+  it('keeps the labels of textbook automata readable with the sink state shown', () => {
+    for (const regex of ['(a|b)*abb', 'ab', 'a|b', '(ab)*', '(a|b)*a(a|b)(a|b)', '(0|1(01*0)*1)*', '-?\\d+(\\.\\d+)?']) {
+      for (const representation of ['dfa', 'min-dfa'] as const) {
+        const diagram = diagramOf(regex, representation, true, 'derived');
+        expect(findLabelCollisions(diagram, layoutDiagram(diagram)), `${regex} as ${representation}`).toEqual([]);
+      }
+    }
+  });
+
+  it('finds a free place for nearly all labels even where many edges meet at the sink state', () => {
+    // Where wide labels crowd around the sink, a few cannot be placed freely.
+    // This bound keeps that an exception.
+    const all = diagrams(true);
+    const obstructed = all.filter(({ diagram }) => findLabelCollisions(diagram, layoutDiagram(diagram)).length > 0);
+    expect(obstructed.length / all.length).toBeLessThan(0.02);
+  });
+
+  it('prefers the middle of the edge on the outer side of its bend', () => {
+    const diagram = diagramOf('ab');
+    for (const shape of layoutDiagram(diagram).shapes) {
+      expect(shape).toEqual({ kind: 'arc', bend: 0, label: { at: 0.5, side: 1 } });
+    }
+  });
+
+  it('moves a label that an edge would run through', () => {
+    // The edge from q0 to the sink passes where the label of the edge next to it would be.
+    const diagram = diagramOf('^(a|b)c$', 'dfa', true, 'derived');
+    const { shapes } = layoutDiagram(diagram);
+    const moved = shapes.filter((shape) => shape.kind === 'arc' && shape.label?.at !== 0.5);
+    expect(moved.length).toBeGreaterThan(0);
+    expect(findLabelCollisions(diagram, layoutDiagram(diagram))).toEqual([]);
+  });
+
+  it('is deterministic', () => {
+    const diagram = diagramOf('(a|b)*a(a|b)(a|b)', 'min-dfa', true);
+    expect(layoutDiagram(diagram).shapes).toEqual(layoutDiagram(diagram).shapes);
   });
 });
 

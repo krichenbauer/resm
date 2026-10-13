@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STATE_RADIUS, arcGeometry, arcPoints, loopGeometry } from './geometry.ts';
+import { STATE_RADIUS, arcGeometry, arcPoints, loopGeometry, loopPoints } from './geometry.ts';
 
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -47,6 +47,50 @@ describe('edge geometry', () => {
     const wide = arcGeometry(from, { x: 0, y: 100 }, 0, 80);
     expect(Math.abs(wide.label.x)).toBeGreaterThan(Math.abs(narrow.label.x) + 30);
     expect(wide.label.y).toBeCloseTo(50);
+  });
+
+  it('puts the label at the middle of the edge on the outer side of its bend unless placed otherwise', () => {
+    for (const bend of [0, 0.2, -0.2]) {
+      const placed = arcGeometry(from, to, bend, 10, { at: 0.5, side: bend < 0 ? -1 : 1 });
+      expect(placed).toEqual(arcGeometry(from, to, bend, 10));
+    }
+  });
+
+  it('moves the label along the edge and to either side of it', () => {
+    const early = arcGeometry(from, to, 0, 10, { at: 0.25, side: 1 });
+    const late = arcGeometry(from, to, 0, 10, { at: 0.75, side: 1 });
+    expect(early.label.x).toBeCloseTo(STATE_RADIUS + 0.25 * (100 - 2 * STATE_RADIUS));
+    expect(late.label.x).toBeCloseTo(STATE_RADIUS + 0.75 * (100 - 2 * STATE_RADIUS));
+    expect(early.label.y).toBeCloseTo(late.label.y);
+    expect(early.path).toBe(late.path);
+
+    const above = arcGeometry(from, to, 0, 10, { at: 0.5, side: 1 });
+    const below = arcGeometry(from, to, 0, 10, { at: 0.5, side: -1 });
+    expect(above.label.y).toBeLessThan(0);
+    expect(below.label.y).toBeCloseTo(-above.label.y);
+  });
+
+  it('keeps the label beside a bent edge wherever it is placed along it', () => {
+    for (const at of [0.15, 0.5, 0.85]) {
+      for (const side of [1, -1] as const) {
+        const { label } = arcGeometry(from, to, 0.3, 10, { at, side });
+        const nearest = Math.min(...arcPoints(from, to, 0.3, 200).map((point) => distance(point, label)));
+        expect(nearest).toBeGreaterThan(8);
+        expect(nearest).toBeLessThan(20);
+      }
+    }
+  });
+
+  it('samples points along the loop that is drawn', () => {
+    const center = { x: 10, y: 20 };
+    const points = loopPoints(center, -Math.PI / 2, 9);
+    const { start, end } = endpoints(loopGeometry(center, -Math.PI / 2).path);
+    expect(points).toHaveLength(9);
+    expect(distance(points[0] ?? center, start)).toBeLessThan(0.1);
+    expect(distance(points[8] ?? center, end)).toBeLessThan(0.1);
+    // The middle of the loop is its outermost point, straight above the state.
+    expect(points[4]?.x).toBeCloseTo(center.x);
+    expect(points[4]?.y).toBeLessThan(center.y - STATE_RADIUS * 1.5);
   });
 
   it('samples points along the same curve that is drawn', () => {
