@@ -1,5 +1,5 @@
 import { type CDPSession, type Page, expect, test } from '@playwright/test';
-import { centerOf, diameterOf, settled, showRegex, state } from './support.ts';
+import { centerOf, diameterOf, sendGesture, settled, showRegex, state } from './support.ts';
 
 test.use({ hasTouch: true, viewport: { width: 400, height: 700 } });
 
@@ -55,6 +55,22 @@ test('zooms by pinching with two fingers, around the point between them', async 
   await expect.poll(() => diameterOf(state(page, 'q1'))).toBeCloseTo(size * 2, 0);
   const after = await centerOf(state(page, 'q1'));
   expect(Math.hypot(after.x - middle.x, after.y - middle.y)).toBeLessThan(3);
+});
+
+test('does not zoom twice when a browser reports a pinch both as touches and as a gesture', async ({ page }) => {
+  const touch = await touchscreen(page);
+  const size = await diameterOf(state(page, 'q1'));
+  const middle = await centerOf(state(page, 'q1'));
+
+  await touch.start({ x: middle.x - 40, y: middle.y + 100, id: 0 });
+  await touch.start({ x: middle.x - 40, y: middle.y + 100, id: 0 }, { x: middle.x + 40, y: middle.y - 100, id: 1 });
+  await sendGesture(page, 'gesturestart', { scale: 1, ...middle });
+  await touch.move({ x: middle.x - 80, y: middle.y + 200, id: 0 }, { x: middle.x + 80, y: middle.y - 200, id: 1 });
+  expect(await sendGesture(page, 'gesturechange', { scale: 2, ...middle })).toBe(true);
+  await touch.end();
+  await sendGesture(page, 'gestureend', { scale: 2, ...middle });
+
+  await expect.poll(() => diameterOf(state(page, 'q1'))).toBeCloseTo(size * 2, 0);
 });
 
 test('drags a state with one finger and lets it return when released', async ({ page }) => {

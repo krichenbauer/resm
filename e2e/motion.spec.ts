@@ -6,6 +6,7 @@ import {
   recordPositions,
   regexField,
   representation,
+  sendGesture,
   settled,
   showRegex,
   state,
@@ -135,6 +136,65 @@ test('zooms with the wheel around the pointer', async ({ page }) => {
   await page.mouse.wheel(0, 2000);
   await expect.poll(() => diameterOf(state(page, 'q2'))).toBeLessThan(size * 0.5);
   expect(distance(await centerOf(state(page, 'q2')), anchor)).toBeLessThan(2);
+});
+
+test('zooms with the wheel anywhere on the canvas, not only over the diagram', async ({ page }) => {
+  await showRegex(page, 'ab', 3);
+  const size = await diameterOf(state(page, 'q0'));
+  const area = await diagramArea(page).boundingBox();
+  if (!area) throw new Error('diagram area is not rendered');
+
+  // The corners of the canvas are far from anything that is drawn.
+  const corners = [
+    { x: area.x + 10, y: area.y + 10 },
+    { x: area.x + area.width - 10, y: area.y + area.height - 10 },
+  ];
+  let expected = size;
+  for (const corner of corners) {
+    await page.mouse.move(corner.x, corner.y);
+    await page.mouse.wheel(0, 200);
+    expected *= Math.exp(-0.4);
+    await expect.poll(() => diameterOf(state(page, 'q0'))).toBeCloseTo(expected, 0);
+  }
+});
+
+test('zooms with a pinch on a Safari trackpad, which arrives as gesture events', async ({ page }) => {
+  await showRegex(page, 'ab', 3);
+  const anchor = await centerOf(state(page, 'q2'));
+  const size = await diameterOf(state(page, 'q2'));
+
+  // Preventing the default keeps Safari from magnifying the whole page instead.
+  expect(await sendGesture(page, 'gesturestart', { scale: 1, ...anchor })).toBe(true);
+  expect(await sendGesture(page, 'gesturechange', { scale: 1.4, ...anchor })).toBe(true);
+  await sendGesture(page, 'gesturechange', { scale: 2, ...anchor });
+  await sendGesture(page, 'gestureend', { scale: 2, ...anchor });
+  await expect.poll(() => diameterOf(state(page, 'q2'))).toBeCloseTo(size * 2, 0);
+  expect(distance(await centerOf(state(page, 'q2')), anchor)).toBeLessThan(2);
+
+  // Every gesture starts at scale 1 again, whatever the zoom level is by then.
+  await sendGesture(page, 'gesturestart', { scale: 1, ...anchor });
+  await sendGesture(page, 'gesturechange', { scale: 0.5, ...anchor });
+  await sendGesture(page, 'gestureend', { scale: 0.5, ...anchor });
+  await expect.poll(() => diameterOf(state(page, 'q2'))).toBeCloseTo(size, 0);
+});
+
+test('lets the canvas, not the browser, handle touch gestures', async ({ page }) => {
+  const touchAction = (selector: string) =>
+    page.locator(selector).first().evaluate((element) => getComputedStyle(element).touchAction);
+  expect(await touchAction('resm-diagram')).toBe('none');
+  expect(await touchAction('resm-diagram .canvas')).toBe('none');
+});
+
+test('listens for gestures on a painted element that covers the whole canvas', async ({ page }) => {
+  // Browsers decide where wheel and touch events need the page's attention
+  // from what is painted. An SVG paints nothing where the diagram is not,
+  // so the listeners sit on an element with a background around it.
+  const canvas = page.locator('resm-diagram .canvas');
+  const area = await diagramArea(page).boundingBox();
+  const box = await canvas.boundingBox();
+  expect(box).toEqual(area);
+  const background = await canvas.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(background).toMatch(/^rgb\(/);
 });
 
 test('brings the whole diagram back into view when it changes, even after zooming and panning', async ({

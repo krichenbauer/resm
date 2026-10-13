@@ -55,6 +55,17 @@ export interface DiagramUpdate {
   readonly description: string;
 }
 
+/**
+ * The part that is used of the events with which Safari reports a pinch. They
+ * are not part of any standard and unknown to TypeScript.
+ */
+interface SafariGestureEvent extends Event {
+  /** The size of the pinch relative to its start. */
+  readonly scale: number;
+  readonly clientX: number;
+  readonly clientY: number;
+}
+
 /** What the pointers on the canvas are currently doing. */
 type Gesture =
   | { readonly kind: 'drag'; readonly state: number; readonly grip: Point }
@@ -73,20 +84,33 @@ export class ResmDiagram extends LitElement {
       display: block;
       flex: 1;
       min-height: 0;
+      /* Panning, pinching, and dragging are handled here, not by the browser. */
+      touch-action: none;
+    }
+
+    /*
+     * The gestures are handled by this element around the drawing. Browsers
+     * decide from what is painted where wheel and touch events need the
+     * page's attention, and the drawing paints nothing where the diagram is
+     * not. The background makes the whole canvas count.
+     */
+    .canvas {
+      width: 100%;
+      height: 100%;
+      background: var(--resm-surface);
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .canvas.grabbing,
+    .canvas.grabbing .state {
+      cursor: grabbing;
     }
 
     svg {
       display: block;
       width: 100%;
       height: 100%;
-      cursor: grab;
-      /* Panning, pinching, and dragging are handled here, not by the browser. */
-      touch-action: none;
-    }
-
-    svg.grabbing,
-    svg.grabbing .state {
-      cursor: grabbing;
     }
 
     svg:focus-visible {
@@ -183,6 +207,8 @@ export class ResmDiagram extends LitElement {
 
   private readonly pointers = new Map<number, Point>();
   private gesture?: Gesture;
+  /** The scale that the last event of the current Safari pinch reported. */
+  private pinchScale = 1;
   private frame = 0;
   private lastFrameTime = 0;
 
@@ -372,6 +398,30 @@ export class ResmDiagram extends LitElement {
     this.wake();
   }
 
+  /**
+   * Safari reports a pinch on a trackpad as gesture events instead of wheel
+   * events, and would otherwise magnify the whole page. A new pinch always
+   * starts at scale 1.
+   */
+  private onSafariPinchStart(event: Event): void {
+    event.preventDefault();
+    this.pinchScale = 1;
+  }
+
+  private onSafariPinchChange(event: Event): void {
+    event.preventDefault();
+    const { scale, clientX, clientY } = event as SafariGestureEvent;
+    // On a touch screen the same pinch also arrives as two pointers, which already zoom.
+    if (this.pointers.size > 0 || !(scale > 0)) return;
+    const box = this.getBoundingClientRect();
+    const point = Number.isFinite(clientX + clientY)
+      ? { x: clientX - box.left, y: clientY - box.top }
+      : { x: this.area.width / 2, y: this.area.height / 2 };
+    this.viewMotion.jumpTo(zoomAt(this.viewMotion.current, this.area, point, scale / this.pinchScale));
+    this.pinchScale = scale;
+    this.wake();
+  }
+
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
     const pixels = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1);
@@ -388,38 +438,44 @@ export class ResmDiagram extends LitElement {
     const box = sized && this.viewFitted ? viewBoxOf(this.viewMotion.current, this.area) : undefined;
     return html`
       <p class="description" id="description">${this.shown?.description}</p>
-      <svg
-        role="img"
-        aria-label="Automaton diagram"
-        aria-describedby="description"
-        tabindex="0"
-        class=${this.gesture ? 'grabbing' : ''}
-        viewBox=${box ? `${box.x} ${box.y} ${box.width} ${box.height}` : nothing}
-        ?data-settled=${scene !== undefined && box !== undefined && this.settled && !this.gesture}
+      <div
+        class=${this.gesture ? 'canvas grabbing' : 'canvas'}
         @pointerdown=${this.onPointerDown}
         @pointermove=${this.onPointerMove}
         @pointerup=${this.onPointerUp}
         @pointercancel=${this.onPointerUp}
         @wheel=${this.onWheel}
-        @keydown=${this.onKeyDown}
+        @gesturestart=${this.onSafariPinchStart}
+        @gesturechange=${this.onSafariPinchChange}
+        @gestureend=${this.onSafariPinchStart}
       >
-        <defs>
-          <marker
-            id="arrowhead"
-            viewBox="0 0 10 10"
-            refX="9.5"
-            refY="5"
-            markerWidth=${ARROWHEAD_SIZE}
-            markerHeight=${ARROWHEAD_SIZE}
-            markerUnits="userSpaceOnUse"
-            orient="auto"
-          >
-            <path d=${ARROWHEAD_PATH} />
-          </marker>
-        </defs>
-        ${repeat(scene?.edges ?? [], (edge) => edge.key, renderEdge)}
-        ${repeat(scene?.states ?? [], (state) => state.key, renderState)}
-      </svg>
+        <svg
+          role="img"
+          aria-label="Automaton diagram"
+          aria-describedby="description"
+          tabindex="0"
+          viewBox=${box ? `${box.x} ${box.y} ${box.width} ${box.height}` : nothing}
+          ?data-settled=${scene !== undefined && box !== undefined && this.settled && !this.gesture}
+          @keydown=${this.onKeyDown}
+        >
+          <defs>
+            <marker
+              id="arrowhead"
+              viewBox="0 0 10 10"
+              refX="9.5"
+              refY="5"
+              markerWidth=${ARROWHEAD_SIZE}
+              markerHeight=${ARROWHEAD_SIZE}
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path d=${ARROWHEAD_PATH} />
+            </marker>
+          </defs>
+          ${repeat(scene?.edges ?? [], (edge) => edge.key, renderEdge)}
+          ${repeat(scene?.states ?? [], (state) => state.key, renderState)}
+        </svg>
+      </div>
     `;
   }
 }

@@ -87,3 +87,27 @@ export const sinkOption = (page: Page) => page.getByRole('checkbox', { name: 'Sh
 export const stateLimitOption = (page: Page) => page.getByRole('spinbutton', { name: 'Maximum number of states' });
 export const themeOption = (page: Page) => page.getByRole('combobox', { name: 'Theme' });
 export const pngWidthOption = (page: Page) => page.getByRole('spinbutton', { name: 'PNG width in pixels' });
+
+/**
+ * Sends one of the gesture events with which Safari reports a pinch on a
+ * trackpad, and on touch screens in addition to the pointer events. Returns
+ * whether the page prevented the browser's own reaction to it.
+ */
+export function sendGesture(
+  page: Page,
+  type: 'gesturestart' | 'gesturechange' | 'gestureend',
+  gesture: { scale: number; x: number; y: number },
+): Promise<boolean> {
+  return diagramArea(page).evaluate(
+    (area, { type, scale, x, y }) => {
+      const event = Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+        scale,
+        clientX: x,
+        clientY: y,
+      });
+      area.dispatchEvent(event);
+      return event.defaultPrevented;
+    },
+    { type, ...gesture },
+  );
+}
