@@ -12,7 +12,8 @@ Everything runs locally in your browser. There is no backend, no account, no ana
 - **Error messages** below the field when the regex is invalid or the automaton is too large. The last valid diagram stays visible meanwhile.
 - **Export** of the whole diagram as SVG or PNG. See [Export](#export).
 - **Share links** that carry the regex and the settings. See [Sharing and remembering](#sharing-and-remembering).
-- **Settings** for the sink state, the size limit, and the theme. See [Settings](#settings).
+- **An alphabet that follows the regex.** By default, the automaton is built over the characters that are written in the regex, as in a textbook; all of ASCII is a setting. See [The alphabet](#the-alphabet).
+- **Settings** for the alphabet, the sink state, the size limit, and the theme. See [Settings](#settings).
 
 ## Browser support
 
@@ -25,7 +26,8 @@ The **Settings** button opens a small menu. Together with the representation sel
 | Setting                  | Default | Meaning |
 | ------------------------ | ------- | ------- |
 | Representation           | DFA     | Which automaton is drawn: ε-NFA, NFA, DFA, or minimized DFA. |
-| Show sink state          | off     | Completes the DFA or minimized DFA: every state gets an edge for every character, and input that can no longer be accepted leads to one extra, non-accepting state. Without it, a missing edge means rejection. Has no effect on the ε-NFA and the NFA. |
+| Alphabet                 | From the regex | Which characters the automaton is about: those written in the regex, or all of ASCII. See [The alphabet](#the-alphabet). |
+| Show sink state          | off     | Completes the DFA or minimized DFA: every state gets an edge for every character of the alphabet, and input that can no longer be accepted leads to one extra, non-accepting state. Without it, a missing edge means rejection. Has no effect on the ε-NFA and the NFA. |
 | Maximum number of states | 200     | The largest diagram that is drawn, from 1 to 500 states. See [Size limits](#size-limits). |
 | Theme                    | System  | Light or dark appearance. "System" follows the operating system. |
 
@@ -36,19 +38,47 @@ The **Export** button opens a menu with two downloads:
 - **Download SVG** saves `resm-diagram.svg`, a vector image at the natural size of the diagram.
 - **Download PNG** saves `resm-diagram.png` with the width in pixels that you enter; 1600 is suggested. The height follows from the proportions of the diagram. Neither side can exceed 8192 pixels, which reduces the width of very tall diagrams.
 
-Both files show the complete diagram with a little padding, whatever part of it is on screen, and whatever the zoom level or the pixel density of the display. They show the diagram in its settled layout, without the effect of dragging, in the colors of the current theme on a solid background. The SVG file names fonts that are present on common systems instead of embedding them, so its text can look slightly different in other programs.
+Both files show the complete diagram with a little padding, whatever part of it is on screen, and whatever the zoom level or the pixel density of the display. They show the diagram in its settled layout, without the effect of dragging, in the colors of the current theme on a solid background. Below the diagram they name the alphabet, as the canvas does, because labels such as `Σ` and `[^a]` cannot be read without it. The SVG file names fonts that are present on common systems instead of embedding them, so its text can look slightly different in other programs.
 
 ## Sharing and remembering
 
-- **Share** copies a link to the clipboard. The link ends in a fragment such as `#regex=a%7Cb&automaton=min-dfa&sink=0&limit=200`: the regex, the representation, the sink option, and the size limit. It contains no automaton, no positions, and no image; whoever opens it computes the diagram again in their own browser. The theme is not part of the link. If the browser denies access to the clipboard, the link is shown in a dialog to copy by hand.
+- **Share** copies a link to the clipboard. The link ends in a fragment such as `#regex=a%7Cb&automaton=min-dfa&alphabet=derived&sink=0&limit=200`: the regex, the representation, the alphabet, the sink option, and the size limit. It contains no automaton, no positions, and no image; whoever opens it computes the diagram again in their own browser. The theme is not part of the link. If the browser denies access to the clipboard, the link is shown in a dialog to copy by hand.
 - **Opening a share link** shows its regex with its settings, which take precedence over what the browser remembers. A setting that the link does not mention, and the theme, keep their remembered values. The fragment is then removed from the address bar, because it would no longer match after the next edit.
 - **The last regex and the settings are remembered** in the browser's local storage under the key `resm`, and restored on the next visit. Nothing else is stored, and nothing is sent anywhere. Without local storage, for example in some private browsing modes, RESM simply starts empty every time.
+
+## The alphabet
+
+Every automaton reads strings over an alphabet Σ. RESM shows it in the bottom left corner of the canvas, for example `Σ = {a, b}`.
+
+**From the regex (default).** Σ consists of the characters that are written in the regex:
+
+- every character that stands for itself, such as `a` or `\.`;
+- every member of a set, a range, or a class: `[a-c]` contributes `a`, `b`, `c`, and `\d` the ten digits;
+- what a negation excludes: `[^a]` contributes `a`, and `\D` the ten digits;
+- nothing for the dot, which names no character.
+
+Over this alphabet, a regex matches exactly those strings that it would match over ASCII and that contain no other character. So the regex keeps its meaning, and the dot and negations range over Σ:
+
+| Regex        | Σ          | Meaning |
+| ------------ | ---------- | ------- |
+| `(a\|b)*abb` | `{a, b}`   | As everywhere: strings of `a` and `b` that end in `abb`. With the sink state shown, each state has exactly one edge for `a` and one for `b`. |
+| `(a\|b)*a.`  | `{a, b}`   | `.` is `a` or `b`: strings whose last character but one is `a`. |
+| `[^a]b`      | `{a, b}`   | `[^a]` is `b`: only `bb`. |
+| `"[^"]*"`    | `{"}`      | `[^"]` matches nothing, so only `""` is left. |
+| `.*`         | `{}`       | `.` matches nothing, so only the empty string is left. |
+
+The last two are hardly ever intended. When a dot or a negation is left with nothing to match, RESM says so below the regex field; this is a remark, not an error, and the diagram is drawn. To give the dot something to stand for, write the characters out, as in `(a|b)*` instead of `.*`.
+
+**ASCII.** Σ is all 128 ASCII characters, whatever the regex contains. The dot and negations then mean what they mean in Python or Java, restricted to ASCII: `"[^"]*"` is a quoted string. The price is paid in the diagram: with the sink state shown, every state gets an edge such as `[^ab]` for all the characters that the regex does not care about.
+
+As long as the sink state is hidden and the regex contains no dot and no negation, both alphabets give the same states and edges.
 
 ## Reading the diagram
 
 - States are named `q0`, `q1`, ... The initial state is always `q0`; the others are numbered in the order a breadth-first search from `q0` finds them, following transitions in ASCII order and ε-transitions in the order of the regex. The same regex therefore always gets the same names.
 - The initial state has an arrow that starts at a dot. Accepting states have a double outline.
 - All transitions between the same two states are drawn as one edge. Its label describes the exact set of characters in regex notation: `a`, `\d`, `[a-f]`, `[^"]`. A label with `ε` is an ε-transition.
+- Labels are relative to the [alphabet](#the-alphabet): `[^a]` stands for all characters of Σ other than `a`. An edge for the whole alphabet is labeled with a list such as `a, b` if Σ has fewer than six characters, and with `Σ` otherwise.
 - Labels make invisible characters visible: `␣` is a space, and `\t`, `\n`, `\v`, `\f`, `\r`, `\0`, and `\x1f` stand for control characters. These spellings appear only in labels; the regex field does not accept them (see [Limitations](#limitations)).
 - By default, a DFA is drawn without its sink state: if a state has no edge for a character, the input is rejected. In the minimized DFA, all states from which no accepting state can be reached are left out for the same reason. With the setting [Show sink state](#settings), the sink is drawn below the other states and is always named last, so that showing it does not rename them.
 
@@ -95,7 +125,9 @@ RESM reads a common subset of the PCRE-style syntax known from Python and Java. 
 Two rules apply everywhere:
 
 - **Full match.** A regex describes whole strings, not substrings: `ab` matches only the string `ab`.
-- **ASCII only.** The alphabet is the 128 characters U+0000 to U+007F. A regex that contains any other character is rejected.
+- **ASCII only.** A regex may contain the 128 characters U+0000 to U+007F. A regex that contains any other character is rejected.
+
+What the dot and negations stand for depends on [the alphabet](#the-alphabet). This section describes them for the ASCII alphabet; with the default alphabet, they are restricted to the characters that are written in the regex.
 
 ### Supported syntax
 
@@ -107,11 +139,11 @@ Two rules apply everywhere:
 | `x*`, `x+`, `x?`               | Zero or more, one or more, zero or one.                                    |
 | `x{n}`, `x{n,}`, `x{n,m}`      | Exactly `n`, at least `n`, between `n` and `m` repetitions.                |
 | `x*?`, `x+?`, `x??`, `x{n,m}?` | Lazy quantifiers. They accept the same strings as the forms without `?`.   |
-| `.`                            | Any character except the line feed.                                        |
+| `.`                            | Any character of the alphabet except the line feed.                        |
 | `[abc]`, `[a-z]`               | Character set: any listed character or any character in a range.           |
-| `[^abc]`                       | Negated set: any ASCII character that is not listed.                       |
+| `[^abc]`                       | Negated set: any character of the alphabet that is not listed.             |
 | `\d`, `\w`, `\s`               | Digit, word character, whitespace.                                         |
-| `\D`, `\W`, `\S`               | Any ASCII character that is not a digit, word character, or whitespace.    |
+| `\D`, `\W`, `\S`               | Any character of the alphabet that is not a digit, word character, or whitespace. |
 | `\.`, `\*`, `\\`, ...          | An escaped punctuation character or space stands for itself.               |
 | `^`, `$`                       | Allowed only at the very beginning and the very end, where they are redundant. |
 
@@ -119,11 +151,11 @@ A quantifier applies to the character, set, or group directly before it. The emp
 
 ### Exact character semantics
 
-- `.` matches the 127 ASCII characters other than the line feed (U+000A).
+- `.` matches the 127 ASCII characters other than the line feed (U+000A), or those of them that are in the alphabet.
 - `\d` is `[0-9]`.
 - `\w` is `[A-Za-z0-9_]`.
 - `\s` is the space (U+0020), tab (U+0009), line feed (U+000A), vertical tab (U+000B), form feed (U+000C), and carriage return (U+000D).
-- `\D`, `\W`, `\S`, and negated sets are complements within ASCII. They include control characters and the line feed, so `[^a]` matches a line feed although `.` does not.
+- `\D`, `\W`, `\S`, and negated sets are complements within the alphabet. Over ASCII they include control characters and the line feed, so `[^a]` matches a line feed although `.` does not.
 - These characters have a special meaning and need a backslash to be used literally: `\ ^ $ . | ? * + ( ) [ {`. Every other ASCII character, including the space, `]`, and `}`, stands for itself. A backslash may precede any ASCII punctuation character or space.
 
 Inside a character set:
@@ -154,7 +186,7 @@ The following are rejected with an error that points to the offending position:
 
 ### Examples
 
-Both lists are checked by the test suite.
+Both lists are checked by the test suite. The descriptions of the two examples with a dot or a negation hold for the ASCII alphabet.
 
 Accepted:
 
@@ -165,8 +197,8 @@ Accepted:
 - `[A-Za-z_]\w*` — an identifier
 - `\d{4}-\d{2}-\d{2}` — a date such as `2026-10-12`
 - `[a-z]+@[a-z]+\.(com|org)` — a very simple e-mail address
-- `"[^"]*"` — a double-quoted string without escapes
-- `.*\.txt` — anything that ends in `.txt`
+- `"[^"]*"` — over ASCII, a double-quoted string without escapes
+- `.*\.txt` — over ASCII, anything that ends in `.txt`
 - `^colou?r$` — `color` or `colour`, with redundant anchors
 - `a{2,4}?` — two to four `a`; the lazy `?` changes nothing
 - `[]^-]` — one of the characters `]`, `^`, `-`
@@ -234,7 +266,7 @@ Everything outside `src/ui/`, `src/worker/`, and `src/export/download.ts` is ind
 
 ### Tests
 
-Unit tests live next to the code they cover as `src/**/*.test.ts`. They include the language tests, which compare all four automata of many regexes against JavaScript's own regex engine as an independent reference, and the tests of the examples in this file.
+Unit tests live next to the code they cover as `src/**/*.test.ts`. They include the language tests, which compare all four automata of many regexes against JavaScript's own regex engine as an independent reference, over ASCII and over the alphabet of each regex, and the tests of the examples in this file.
 
 Browser tests live in `e2e/` and run in Chromium, Firefox, and WebKit. The tests of touch gestures run in Chromium only, because only its test interface can simulate several fingers. To run one browser, use `pnpm test:e2e --project=firefox`.
 

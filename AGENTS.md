@@ -26,6 +26,7 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - Support a **PCRE-style common subset**, familiar from Python and Java, but do **not** claim full compatibility with either implementation.
 - Include concatenation, alternation (`|`), grouping (`(...)`), `*`, `+`, `?`, bounded repetition (`{n}`, `{n,}`, `{n,m}`), literal escapes, `.`, character sets (`[abc]`), ranges (`[a-z]`), negated sets (`[^abc]`), and common predefined classes (`\d`, `\w`, `\s`).
 - **ASCII only**: character semantics are restricted to U+0000–U+007F, including predefined classes and negation. Reject unsupported non-ASCII regex input with a clear English diagnostic. Document exact character-class and dot semantics, and test boundary cases.
+- **Alphabet:** by default the alphabet `Σ` is **derived from the regex**; all of ASCII is a setting. The derived alphabet consists of the characters that are written in the regex: literals, the members of sets, ranges, and classes, and what a negated set or class excludes. The dot contributes nothing. Over its alphabet, a regex matches exactly the strings over `Σ` that it matches over ASCII, so the dot and negations range over `Σ`. Point out, without treating it as an error, a dot or negation that is left with nothing to match.
 - Interpret the regex as a **full match** of the input string, not a substring search.
 - Allow `^` only at the beginning and `$` only at the end, as redundant full-match anchors. Elsewhere they are syntax errors unless escaped as literals.
 - Accept the negated predefined classes `\D`, `\W`, and `\S` as the ASCII complements of `\d`, `\w`, and `\s`, both standalone and inside character sets.
@@ -48,7 +49,7 @@ RESM (Regex State Machine) is a minimal, browser-only tool that turns a regular 
 - Draw an initial-state arrow **from a dot** into the initial state. Draw accepting states with a **double outline**.
 - Combine transitions to the same target into one edge where possible. Label each edge with an exact, readable representation of its character set (ranges and common class shorthands when semantically correct).
 - Start with a default **limit of 200 rendered states**, adjustable in settings. On exceeding the limit, show an error and keep the last valid diagram. Bound computational work as well; never let state explosion freeze the tab.
-- The explicit display and exact derivation policy for the input alphabet `Σ` are **not part of the MVP**. Do not lock in a particular future alphabet-display model just to implement current automata.
+- Show the alphabet in the **bottom left corner** of the canvas, as in `Σ = {a, b}`, and in exported images. An edge for the whole alphabet is labeled with a list such as `a, b` if the alphabet has fewer than six characters, and with `Σ` otherwise. A field to state the alphabet explicitly is not part of the MVP.
 
 ## MVP: interface and interaction
 
@@ -78,13 +79,13 @@ These refine the sections above. `README.md` documents them for users.
 
 - **Limits:** repetition counts up to 1000; groups nested up to 100 deep; the state limit is adjustable from 1 to 500; automata that are only intermediate steps may have up to 2000 states, or four times the state limit if that is more.
 - **Thompson details:** `x+` and `x?` are built like `x*` without the bypass and without the loop; an alternation branches into all its options from one state.
-- **Edge labels:** regex notation, with `␣` for the space and `\n`, `\t`, `\x1f`, etc. for control characters; the whole alphabet is `[\x00-\x7f]`.
+- **Edge labels:** regex notation, with `␣` for the space and `\n`, `\t`, `\x1f`, etc. for control characters. Labels are relative to the alphabet: `[^a]` stands for all other characters of `Σ`.
 - **Layout:** dagre places the states; edges are shaped by RESM itself so they can follow moving states. Back edges, loops, and edges that skip many layers are kept out of the layered layout, and a shown sink state is placed below the other states.
 - **Node identity:** a state is identified across edits by the labels along the path on which a breadth-first search first reaches it.
 - **Auto-fit:** the view zooms in on its own only when the diagram would be more than 2.5 times larger when fitted; a diagram is never enlarged beyond its natural size.
 - **Reduced motion:** if the operating system asks for it, changes appear at once.
 - **Export:** the settled layout, in the colors of the current theme, on a solid background; PNG sides are capped at 8192 pixels.
-- **Share links:** `#regex=...&automaton=...&sink=0|1&limit=...`. The theme is not shared. The fragment is removed from the address bar once it has been applied.
+- **Share links:** `#regex=...&automaton=...&alphabet=derived|ascii&sink=0|1&limit=...`. The theme is not shared. The fragment is removed from the address bar once it has been applied.
 
 ## Implementation order
 
@@ -105,7 +106,7 @@ Within each step: add a test for the smallest meaningful behavior, implement it,
 - Animating a string through the machine / step-by-step acceptance simulation.
 - Visual walkthroughs of regex → ε-NFA → NFA → DFA → minimized DFA construction.
 - Comparing regexes for language equivalence.
-- Displaying the formal automaton five-tuple `(Q, Σ, δ, q0, F)` or exposing the derived alphabet as a feature.
+- Displaying the formal automaton five-tuple `(Q, Σ, δ, q0, F)`, or letting the user state the alphabet explicitly.
 - Unicode input, extra regex flags, or non-regular regex extensions.
 - Viewport-only image export.
 - Progressive Web App installation, offline-start caching, or a service worker.
